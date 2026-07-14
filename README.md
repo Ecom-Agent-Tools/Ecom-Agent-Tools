@@ -1,12 +1,15 @@
 # 🛒 Ecom Agent Tools
 
-> Open-source AI agent prompts & skills for e-commerce — powering the tools at EcomAgentTools.com.
+> Self-built AI agent skills & useful prompts for e-commerce — open-source companion to EcomAgentTools.com.
 
 ## What This Is
 
-This GitHub repo is a curated collection of **AI agent prompts and skills** purpose-built for e-commerce workflows. Each skill is a self-contained module that an AI agent can load and execute — from product research and competitor analysis to ad creative generation and customer support automation.
+This repo is my personal collection of **self-built AI agent skills and hand-picked prompts** for e-commerce workflows. Everything here is either:
 
-This repo focuses on the **prompts and skills** — the brains behind the automation. Rather than generic prompts, every skill here is **structured, tested, and reusable** across different AI agent platforms.
+- 🛠️ **Skills I built** — structured, reusable modules that AI agents can load and execute
+- 📝 **Useful prompts** — battle-tested prompts for product research, competitor analysis, ad creative, and more
+
+Each skill is a self-contained module covering a specific e-commerce task — from product research and competitor analysis to ad creative generation and customer support automation.
 
 ## 📂 Awesome Skills for E-Commerce
 
