@@ -8,7 +8,7 @@ This directory contains AI agent skills built specifically for e-commerce workfl
 
 | # | Skill Name | Category | Description | Status |
 |---|-----------|----------|-------------|--------|
-| — | *Coming soon* | — | — | 🚧 |
+| 1 | [SEO Evaluator](./seo-evaluator/) | 📝 Content & SEO | Evidence-first e-commerce page evaluation — separates facts from guesses, no arbitrary scoring | ✅ v2.1 |
 
 ## 📦 Skill Structure
 
