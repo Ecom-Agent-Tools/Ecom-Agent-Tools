@@ -1,0 +1,51 @@
+{
+  "version": 2,
+  "store_name": "",
+  "default_language": "match_customer",
+  "timezone": "Asia/Shanghai",
+  "gmail": {
+    "account": "",
+    "query": "label:ECS/ToProcess is:unread newer_than:30d",
+    "max_threads_per_run": 20,
+    "labels": {
+      "queue": "ECS/ToProcess",
+      "drafted": "ECS/Drafted",
+      "sent": "ECS/Sent",
+      "human": "ECS/Human",
+      "error": "ECS/Error"
+    }
+  },
+  "commerce": {
+    "provider": "unconfigured",
+    "connector": "",
+    "recent_order_days": 365,
+    "recent_order_limit": 20
+  },
+  "policy_sources": [],
+  "learning": {
+    "enabled": false,
+    "consent_granted_at": null,
+    "history_window_days": 30,
+    "history_query": "newer_than:30d",
+    "require_dedicated_inbox_or_scoped_query": true,
+    "learn_from_draft_edits": true,
+    "draft_baseline_retention_days": 7,
+    "store_raw_messages": false,
+    "download_attachments": false
+  },
+  "automation": {
+    "send_mode": "draft_only",
+    "auto_send_allowlist": [],
+    "max_refund_without_human": 0,
+    "human_handoff_phrase": "requires manual processing",
+    "ai_disclosure": {
+      "enabled": false,
+      "text": "This email is automatically processed by AI. If manual processing is required, please include the words 'requires manual processing' in your reply."
+    }
+  },
+  "retention": {
+    "case_report_days": 30,
+    "redact_email_local_part": true
+  }
+}
+
