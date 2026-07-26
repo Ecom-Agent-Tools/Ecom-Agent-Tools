@@ -31,6 +31,8 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     for line in text[4:end].splitlines():
         if not line.strip():
             continue
+        if line[0].isspace() or line.lstrip().startswith("-"):
+            continue
         if ":" not in line:
             return {}
         key, value = line.split(":", 1)
@@ -42,10 +44,16 @@ def main() -> int:
     errors: list[str] = []
     skill_text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
     frontmatter = parse_frontmatter(skill_text)
-    if set(frontmatter) != {"name", "description"}:
-        error(errors, f"SKILL.md frontmatter must only contain name/description, actually {sorted(frontmatter)}")
+    if set(frontmatter) != {"name", "description", "version", "metadata"}:
+        error(errors, f"SKILL.md frontmatter must contain name, description, version, and metadata; actual keys: {sorted(frontmatter)}")
     if frontmatter.get("name") != ROOT.name:
         error(errors, "Skill name is inconsistent with the directory name")
+    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", frontmatter.get("version", "")):
+        error(errors, "SKILL.md version must be valid semver")
+    if "metadata:\n  openclaw:" not in skill_text:
+        error(errors, "SKILL.md metadata must declare metadata.openclaw")
+    if not (ROOT / ".clawhubignore").is_file():
+        error(errors, "Missing .clawhubignore")
     if "TODO" in skill_text:
         error(errors, "SKILL.md still contains TODO")
 
@@ -154,4 +162,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,3 +1,13 @@
+---
+name: seo-evaluator
+description: Evaluate e-commerce pages with evidence-first SEO findings that distinguish verified issues, likely signals, editorial opportunities, unavailable checks, and appendix items.
+version: 2.1.0
+metadata:
+  openclaw:
+    emoji: "🔎"
+    homepage: https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/main/awesome-skills-for-ecommerce/seo-evaluator
+---
+
 # SEO Evaluator v2.1 — Evidence-First E-Commerce Page Evaluator
 
 An evidence-first SEO evaluator for ecommerce pages and local HTML files. Separates observable facts from diagnostic signals and editorial judgment.

@@ -1,6 +1,26 @@
 ---
 name: ecommerce-gmail-customer-service
-description: Gmail email processing skill for e-commerce customer service teams. Used to install and configure exclusive e-commerce email customer service agents, or handle customers' pre-sales consultation, order payment, order changes, logistics, missing and wrong parts, returns and exchanges, refunds, warranty repairs, subscriptions and digital goods, account privacy, safety recalls, complaint upgrades, membership promotions, platforms and wholesale and other emails. First split multiple appeals and classify them according to three-level intentions, then match the customer's recently purchased goods with complete orders, retrieve historical words and classification processing practices confirmed by the user, pull merchant activities and refund and return policies, and finally generate an auditable Gmail reply draft; support learning of customer service emails in the past 30 days with explicit consent, continuous learning from manually modified AI drafts, optional AI statements, scheduled batch processing, manual upgrades, and security-controlled automatic sending.
+description: "Safely triage e-commerce customer-service Gmail threads: classify requests, match products and orders, check campaigns and policies, and create auditable reply drafts with escalation safeguards."
+version: 1.0.0
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python3
+        - gog
+        - openclaw
+    envVars:
+      - name: OPENCLAW_STATE_DIR
+        required: false
+        description: Optional override for the local OpenClaw runtime-state directory.
+      - name: VISUAL
+        required: false
+        description: Optional editor used to open editable runtime files.
+      - name: EDITOR
+        required: false
+        description: Fallback editor used to open editable runtime files.
+    emoji: "📧"
+    homepage: https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/main/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service
 ---
 
 # E-commerce Gmail customer service
@@ -82,4 +102,3 @@ The restore command first backs up the running copy. `assets/default-system-prom
 ## Completion criteria
 
 The report is completed only when all of the following are true: Gmail authentication is passed, and history learning selections are recorded; if agreed, the customer service threads in the past 30 days have been desensitized and summarized, the tone summary has been confirmed by the user, and `user_memory.md` has been generated; the merchant order and policy data interface has been passed, the Agent identity and personality have been confirmed, the user has reviewed the running version system prompt words, the workflow and memory file location have been informed, and AI The statement options are confirmed, at least six types of simulated emails generate only correct drafts, at least one manual modification draft learning case is passed, the manual upgrade access control is valid, and the disabled cron manual run is successful. Automatic sending requires additional explicit authorization.
-
