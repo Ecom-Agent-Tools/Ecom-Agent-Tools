@@ -7,7 +7,6 @@ import csv
 import json
 import os
 import re
-import stat
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -66,8 +65,8 @@ def main() -> int:
         error(errors, "The default system prompt word numbers are not consecutive or do not start from R001")
     if DISCLOSURE not in prompt:
         error(errors, "The default system prompt word lacks the original text of the specified AI statement")
-    if stat.S_IMODE(prompt_path.stat().st_mode) & 0o222:
-        error(errors, "The default system prompt word should be read-only")
+    # Git and ClawHub bundles do not preserve a portable read-only file mode.
+    # configure.py applies that protection at runtime after installation.
 
     playbook_text = (ROOT / "references" / "reply-playbooks.md").read_text(encoding="utf-8")
     plan_ids = set(re.findall(r"^### ([A-Z0-9-]+)｜", playbook_text, re.MULTILINE))

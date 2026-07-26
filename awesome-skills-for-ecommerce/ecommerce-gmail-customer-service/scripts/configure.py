@@ -71,6 +71,14 @@ def atomic_json(path: Path, data: dict) -> None:
     os.replace(temporary, path)
 
 
+def protect_baseline() -> None:
+    """Make the shipped recovery source read-only at install/runtime, not in Git."""
+    try:
+        os.chmod(DEFAULTS["system-prompt"], 0o444)
+    except OSError as exc:
+        raise SystemExit(f"Unable to protect the default system prompt baseline: {exc}") from exc
+
+
 def ensure_initialized() -> None:
     missing = [name for name in RUNTIME_NAMES if not runtime_path(name).exists()]
     if missing:
@@ -82,6 +90,7 @@ def ensure_initialized() -> None:
 
 
 def init_runtime(_: argparse.Namespace) -> None:
+    protect_baseline()
     destination = runtime_dir()
     destination.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(destination, 0o700)
@@ -215,6 +224,7 @@ def restore_runtime(args: argparse.Namespace) -> None:
 
 
 def verify_runtime(_: argparse.Namespace) -> None:
+    protect_baseline()
     ensure_initialized()
     errors = []
     prompt = runtime_path("system-prompt").read_text(encoding="utf-8")
@@ -225,7 +235,7 @@ def verify_runtime(_: argparse.Namespace) -> None:
         errors.append(f"The running version system prompt words only have {len(rule_numbers)} numbering rules, at least 100 are required")
     if len(rule_numbers) != len(set(rule_numbers)):
         errors.append("There is a duplicate rule number in the running version system prompt word")
-    required_workflow = ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "Complete Order", "Activity", "Policy"]
+    required_workflow = ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "complete orders", "Activities", "Policy"]
     for marker in required_workflow:
         if marker not in workflow:
             errors.append(f"The running version of the workflow is missing: {marker}")
@@ -252,9 +262,6 @@ def verify_runtime(_: argparse.Namespace) -> None:
         expected = manifest.get("default-system-prompt.md")
         if expected and sha256(DEFAULTS["system-prompt"]) != expected:
             errors.append("The hash of the read-only default system prompt word is inconsistent with the release baseline")
-    mode = stat.S_IMODE(DEFAULTS["system-prompt"].stat().st_mode)
-    if mode & 0o222:
-        errors.append("Default system prompt words are still writable; should remain read-only")
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
@@ -307,4 +314,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
