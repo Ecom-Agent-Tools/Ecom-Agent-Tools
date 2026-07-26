@@ -9,6 +9,7 @@ This directory contains AI agent skills built specifically for e-commerce workfl
 | # | Skill Name | Category | Description | Status |
 |---|-----------|----------|-------------|--------|
 | 1 | [SEO Evaluator](./seo-evaluator/) | 📝 Content & SEO | Evidence-first e-commerce page evaluation — separates facts from guesses, no arbitrary scoring | ✅ v2.1 |
+| 2 | [E-commerce Gmail Customer Service](./ecommerce-gmail-customer-service/) | 📧 Customer Service | Classifies customer requests, matches orders and policies, learns approved reply preferences, and creates safe Gmail drafts | ✅ v1.0 |
 
 ## 📦 Skill Structure
 
@@ -30,7 +31,7 @@ We're actively building skills for:
 - **Shopify store audit** — check SEO, speed, conversion bottlenecks  
 - **Competitor ad spy** — monitor competitor creatives and copy
 - **AliExpress supplier vetting** — evaluate supplier reliability
-- **Email marketing automation** — abandoned cart, win-back sequences
+- **Marketplace inbox automation** — manage Amazon, eBay, Etsy, and Walmart platform messages
 - **Social commerce** — TikTok/Instagram shop content generation
 
 ## 📬 Submit a Skill
