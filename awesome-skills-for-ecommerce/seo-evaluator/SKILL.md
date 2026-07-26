@@ -5,7 +5,7 @@ version: 2.1.0
 metadata:
   openclaw:
     emoji: "🔎"
-    homepage: https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/main/awesome-skills-for-ecommerce/seo-evaluator
+    homepage: https://ecomagenttools.com
 ---
 
 # SEO Evaluator v2.1 — Evidence-First E-Commerce Page Evaluator

@@ -20,7 +20,7 @@ metadata:
         required: false
         description: Fallback editor used to open editable runtime files.
     emoji: "📧"
-    homepage: https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/main/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service
+    homepage: https://ecomagenttools.com
 ---
 
 # E-commerce Gmail customer service
