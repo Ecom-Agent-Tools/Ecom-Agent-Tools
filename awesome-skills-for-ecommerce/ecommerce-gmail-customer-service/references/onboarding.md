@@ -11,11 +11,24 @@ Advance in stages when first configured. Each stage first explains the goal, the
    python3 scripts/configure.py status
    ```
 
-2. Ask and write the running configuration one by one: store name, default language, time zone, customer service Gmail, merchant platform/OMS, policy source.
-3. Explicitly default to `draft_only`; automatic sending must not be enabled at this time.
-4. Run `python3 scripts/configure.py verify`.
+   Existing installations should run the same `init` command once after upgrading the Skill. It adds newly introduced safe configuration fields without replacing configured values or editable runtime files.
 
-Passing criteria: the running directory exists, the five running files `config.json`, `system-prompt.md`, `workflow.md`, `persona.md`, and `user_memory.md` are readable, the default prompt words are at least 100 rules, and the AI ​​statement text is complete.
+2. Ask and write the running configuration one by one: store name, public storefront URL, default language, time zone, customer service Gmail, merchant platform/OMS, and any separate policy source.
+3. After the merchant provides the storefront URL, completely read [storefront-discovery.md](storefront-discovery.md), then run:
+
+   ```bash
+   python3 scripts/discover_store.py --url https://store.example
+   python3 scripts/configure.py path store-discovery
+   python3 scripts/configure.py status
+   ```
+
+   Replace the example URL with the exact merchant-supplied public URL. Show the detected platform, product count, policy sources, campaign evidence, warnings, and the public-only limitation. Ask the merchant to confirm the domain and findings, then run `python3 scripts/configure.py storefront confirmed`. Do not request store admin credentials for discovery.
+4. Explain that URL discovery reads only public storefront pages. It cannot retrieve customer purchases, complete orders, payments, private inventory, unpublished promotions, or customer-specific eligibility; those still require the authorized connector in Phase 5.
+5. If the merchant has no public storefront, run `python3 scripts/configure.py storefront none` and continue. Do not invent a URL or crawl a marketplace search result.
+6. Explicitly default to `draft_only`; automatic sending must not be enabled at this time.
+7. Run `python3 scripts/configure.py verify`.
+
+Passing criteria: the running directory exists; the five running files `config.json`, `system-prompt.md`, `workflow.md`, `persona.md`, and `user_memory.md` are readable; storefront discovery has produced a source-traceable `store-discovery.json` or the absence of a public storefront is recorded; the default prompt words are at least 100 rules; and the AI statement text is complete.
 
 ## Phase 2: Configuring OpenClaw
 
@@ -123,15 +136,16 @@ Passing criteria: Agree or rejection has been recorded; if agreed, the search sc
 
 ## Phase 5: Connect merchant orders, products, activities, and policies
 
-1. Ask about the platform: Shopify, WooCommerce, Amazon/eBay/Etsy/Walmart, other marketplaces, self-built ERP/OMS, or a combination.
+1. Start with the detected public storefront platform as a hint, then ask the merchant to confirm the actual order system: Shopify, WooCommerce, Amazon/eBay/Etsy/Walmart, other marketplaces, self-built ERP/OMS, or a combination. Detection must not be treated as authorization.
 2. Press [merchant-data-contract.md](merchant-data-contract.md) to configure the read-only connector. First only allow `find_customer`, `list_recent_orders`, `get_order`, `get_product`, `list_campaigns`, `list_policies`.
 3. Connectors that "put client input into shell/SQL" are not accepted. All calls must be parameterized and return structured JSON.
-4. Verify with a test client:
+4. Combine the public discovery snapshot with authenticated sources only under the precedence and applicability rules in [storefront-discovery.md](storefront-discovery.md). Public data may fill product descriptions and identify candidate policy or campaign sources, but it cannot prove purchases, order status, inventory, historical terms, or customer eligibility.
+5. Verify with a test client:
 - Ability to pull recently purchased items;
 - Ability to trace products back to complete orders;
 - Ability to pull current activities;
 - Ability to read the source, region and version of the refund/return policy.
-5. Write operations (cancellation, refund, address change, etc.) remain closed unless the user configures permissions and approvals otherwise.
+6. Write operations (cancellation, refund, address change, etc.) remain closed unless the user configures permissions and approvals otherwise.
 
 Passing criteria: All four types of context have real sources and crawl times; when the connection fails, the Agent will turn to manual work instead of guessing.
 
@@ -271,5 +285,4 @@ openclaw cron enable JOB_ID
 
 Remains `draft_only` even if cron is enabled. If the user requires automatic sending in the future, they must conduct additional low-risk allowlist, refund/account action ban, rollback and monitoring tests, and obtain explicit authorization again.
 
-Finally report to the user: Gmail account, Agent name, five running file paths, learning status and historical scope, AI statement status, merchant connector, cron ID/frequency/time zone, test results, types that still require manual work and automatic sending status. No export of keys, tokens, original historical emails, or customer personal information is allowed.
-
+Finally report to the user: Gmail account, confirmed storefront URL and last public discovery time, Agent name, five running file paths, learning status and historical scope, AI statement status, merchant connector, cron ID/frequency/time zone, test results, types that still require manual work and automatic sending status. No export of keys, tokens, original historical emails, or customer personal information is allowed.

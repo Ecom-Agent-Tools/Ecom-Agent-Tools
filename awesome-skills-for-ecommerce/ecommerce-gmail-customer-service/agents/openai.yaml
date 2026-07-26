@@ -1,5 +1,4 @@
 interface:
   display_name: "E-commerce Gmail Customer Service"
-  short_description: "Split e-commerce customer demands, check orders, policies and generate a draft safety reply"
-  default_prompt: "Use $ecommerce-gmail-customer-service to classify new customer emails, retrieve matching commerce context, and create policy-compliant Gmail drafts."
-
+  short_description: "Discover store data and draft safer ecommerce Gmail replies"
+  default_prompt: "Use $ecommerce-gmail-customer-service to discover public storefront sources, classify new customer emails, retrieve matching authorized commerce context, and create policy-compliant Gmail drafts."

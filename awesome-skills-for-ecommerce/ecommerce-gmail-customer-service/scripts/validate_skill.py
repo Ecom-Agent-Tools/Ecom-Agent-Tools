@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parent.parent
 DISCLOSURE = "This email is automatically processed by AI. If manual processing is required, please include the words 'requires manual processing' in your reply."
@@ -44,15 +42,24 @@ def main() -> int:
     skill_text = (ROOT / "SKILL.md").read_text(encoding="utf-8")
     frontmatter = parse_frontmatter(skill_text)
     if set(frontmatter) != {"name", "description", "version", "metadata"}:
-        error(errors, f"SKILL.md frontmatter must contain name, description, version, and metadata; actual keys: {sorted(frontmatter)}")
+        error(
+            errors,
+            f"SKILL.md frontmatter must contain name, description, version, and metadata; actual keys: {sorted(frontmatter)}",
+        )
     if frontmatter.get("name") != ROOT.name:
         error(errors, "Skill name is inconsistent with the directory name")
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", frontmatter.get("version", "")):
+    if not re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
+        frontmatter.get("version", ""),
+    ):
         error(errors, "SKILL.md version must be valid semver")
     if "metadata:\n  openclaw:" not in skill_text:
         error(errors, "SKILL.md metadata must declare metadata.openclaw")
     if not (ROOT / ".clawhubignore").is_file():
         error(errors, "Missing .clawhubignore")
+    for relative in ["scripts/discover_store.py", "references/storefront-discovery.md"]:
+        if not (ROOT / relative).is_file():
+            error(errors, f"Missing storefront discovery component: {relative}")
     if "TODO" in skill_text:
         error(errors, "SKILL.md still contains TODO")
 
@@ -60,15 +67,26 @@ def main() -> int:
     prompt = prompt_path.read_text(encoding="utf-8")
     rules = [int(value) for value in re.findall(r"\[R(\d{3})\]", prompt)]
     if len(rules) < 100:
-        error(errors, f"The default system prompt word rules are less than 100: {len(rules)}")
+        error(
+            errors,
+            f"The default system prompt word rules are less than 100: {len(rules)}",
+        )
     if rules != list(range(1, len(rules) + 1)):
-        error(errors, "The default system prompt word numbers are not consecutive or do not start from R001")
+        error(
+            errors,
+            "The default system prompt word numbers are not consecutive or do not start from R001",
+        )
     if DISCLOSURE not in prompt:
-        error(errors, "The default system prompt word lacks the original text of the specified AI statement")
+        error(
+            errors,
+            "The default system prompt word lacks the original text of the specified AI statement",
+        )
     # Git and ClawHub bundles do not preserve a portable read-only file mode.
     # configure.py applies that protection at runtime after installation.
 
-    playbook_text = (ROOT / "references" / "reply-playbooks.md").read_text(encoding="utf-8")
+    playbook_text = (ROOT / "references" / "reply-playbooks.md").read_text(
+        encoding="utf-8"
+    )
     plan_ids = set(re.findall(r"^### ([A-Z0-9-]+)｜", playbook_text, re.MULTILINE))
     if len(plan_ids) < 50:
         error(errors, f"Too few reply plans: {len(plan_ids)}")
@@ -77,13 +95,23 @@ def main() -> int:
     with taxonomy_path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     required_columns = {
-        "l1_code", "l1_name", "l2_code", "l2_name", "l3_code", "l3_name",
-        "plan_a", "plan_b", "plan_c", "risk",
+        "l1_code",
+        "l1_name",
+        "l2_code",
+        "l2_name",
+        "l3_code",
+        "l3_name",
+        "plan_a",
+        "plan_b",
+        "plan_c",
+        "risk",
     }
     if not rows:
         error(errors, "The three-level classification table is empty")
     elif set(rows[0]) != required_columns:
-        error(errors, "The structure of the three-level classification table is incorrect")
+        error(
+            errors, "The structure of the three-level classification table is incorrect"
+        )
     l1_to_l2: dict[str, set[str]] = defaultdict(set)
     l2_to_l3: dict[str, set[str]] = defaultdict(set)
     seen_l3: set[str] = set()
@@ -100,35 +128,76 @@ def main() -> int:
             if plan not in plan_ids:
                 error(errors, f"Line {line_number} refers to an unknown plan: {plan}")
         if row["risk"] not in {"low", "medium", "high", "manual"}:
-            error(errors, f"The risk value of row {line_number} is invalid: {row['risk']}")
+            error(
+                errors, f"The risk value of row {line_number} is invalid: {row['risk']}"
+            )
     if len(l1_to_l2) < 12:
         error(errors, f"Insufficient first-level classification: {len(l1_to_l2)}")
     for l1, l2s in l1_to_l2.items():
         if len(l2s) < 2:
-            error(errors, f"The first-level classification {l1} is less than two second-level classifications")
+            error(
+                errors,
+                f"The first-level classification {l1} is less than two second-level classifications",
+            )
     for l2, l3s in l2_to_l3.items():
         if len(l3s) < 2:
-            error(errors, f"Level 2 classification {l2} is less than two level 3 classifications")
+            error(
+                errors,
+                f"Level 2 classification {l2} is less than two level 3 classifications",
+            )
 
     workflow = (ROOT / "assets" / "default-workflow.md").read_text(encoding="utf-8")
-    for marker in ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "recently purchased", "complete orders", "Activities", "Policy"]:
+    for marker in [
+        "Phase 1",
+        "Phase 2",
+        "Phase 3",
+        "Phase 4",
+        "recently purchased",
+        "complete orders",
+        "Activities",
+        "Policy",
+    ]:
         if marker not in workflow:
             error(errors, f"Default workflow is missing: {marker}")
 
     onboarding = (ROOT / "references" / "onboarding.md").read_text(encoding="utf-8")
     for marker in [
-        "console.cloud.google.com", "gog auth credentials", "openclaw cron add", "--disabled",
-        "Agent name", "edit persona", "edit system-prompt", "edit workflow", "set disclosure",
-        "simulation testing", "requires manual processing", "completion",
+        "console.cloud.google.com",
+        "gog auth credentials",
+        "openclaw cron add",
+        "--disabled",
+        "Agent name",
+        "edit persona",
+        "edit system-prompt",
+        "edit workflow",
+        "set disclosure",
+        "simulation testing",
+        "requires manual processing",
+        "completion",
     ]:
         if marker not in onboarding:
             error(errors, f"The installation guide is missing: {marker}")
 
-    config = json.loads((ROOT / "assets" / "default-config.json").read_text(encoding="utf-8"))
+    config = json.loads(
+        (ROOT / "assets" / "default-config.json").read_text(encoding="utf-8")
+    )
+    if config.get("version") != 3:
+        error(errors, "The default configuration version must be 3")
     if config.get("automation", {}).get("send_mode") != "draft_only":
         error(errors, "The default sending mode must be draft_only")
     if config.get("automation", {}).get("ai_disclosure", {}).get("text") != DISCLOSURE:
         error(errors, "The default configuration AI declaration text is incorrect")
+    storefront = config.get("storefront", {})
+    if storefront.get("status") != "unconfigured":
+        error(errors, "The default storefront status must be unconfigured")
+    if storefront.get("discovery_enabled") is not True:
+        error(errors, "Public storefront discovery must be enabled by default")
+    if storefront.get("respect_robots_txt") is not True:
+        error(errors, "Public storefront discovery must respect robots.txt")
+    if storefront.get("public_sources_only") is not True:
+        error(errors, "Public storefront discovery must be limited to public sources")
+    if storefront.get("refresh_interval_hours") != 24:
+        error(errors, "The default storefront refresh interval must be 24 hours")
 
     sources = (ROOT / "references" / "research-sources.md").read_text(encoding="utf-8")
     source_urls = re.findall(r"https://[^)\s]+", sources)
@@ -137,7 +206,10 @@ def main() -> int:
 
     openai_yaml = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
     if "$ecommerce-gmail-customer-service" not in openai_yaml:
-        error(errors, "agents/openai.yaml default prompt does not explicitly mention Skill")
+        error(
+            errors,
+            "agents/openai.yaml default prompt does not explicitly mention Skill",
+        )
 
     for path in ROOT.rglob("*"):
         if path.is_file() and path.suffix in {".md", ".py", ".json", ".csv", ".yaml"}:

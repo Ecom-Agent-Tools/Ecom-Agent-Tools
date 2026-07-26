@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "store_name": "",
   "default_language": "match_customer",
   "timezone": "Asia/Shanghai",
@@ -20,6 +20,19 @@
     "connector": "",
     "recent_order_days": 365,
     "recent_order_limit": 20
+  },
+  "storefront": {
+    "status": "unconfigured",
+    "url": "",
+    "discovery_enabled": true,
+    "discovery_file": "",
+    "last_discovered_at": null,
+    "refresh_interval_hours": 24,
+    "max_pages": 30,
+    "max_bytes_per_page": 1000000,
+    "request_delay_seconds": 0.25,
+    "respect_robots_txt": true,
+    "public_sources_only": true
   },
   "policy_sources": [],
   "learning": {
@@ -48,4 +61,3 @@
     "redact_email_local_part": true
   }
 }
-

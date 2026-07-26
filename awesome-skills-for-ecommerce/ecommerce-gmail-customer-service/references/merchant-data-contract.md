@@ -2,6 +2,8 @@
 
 This skill does not assume that merchants use Shopify, WooCommerce, Amazon, a standalone ERP, or a certain returns system. The installation must be configured with an authorized merchant connector and have the Agent obtain data through structured tool calls. Splicing customer email fields directly into shell commands, SQL, or URLs is prohibited.
 
+The public storefront discovery in [storefront-discovery.md](storefront-discovery.md) can automatically identify public product, campaign, and policy sources after the merchant supplies a URL. It is a supplemental, unauthenticated source. It cannot satisfy `find_customer`, `list_recent_orders`, `get_order`, private inventory, historical entitlement, or customer-specific campaign eligibility, and it never grants write authority.
+
 ## Required abilities
 
 The connector provides at least the following read-only operations; write operations must be authorized separately:
@@ -99,4 +101,3 @@ Optional write operations: `cancel_order`, `update_order`, `create_return`, `cre
 - Amazon, eBay, Etsy, Walmart and other platforms: read platform cases and seller permissions at the same time, and cannot pretend that independent station actions can be applied directly.
 - Self-built ERP/OMS: Provide the above six read-only interfaces and call them by fixed parameterization tools; do not allow the Agent to execute arbitrary SQL.
 - When returns, subscriptions, memberships, and payments are managed by third-party systems, connect these systems as independent sources and retain their state time.
-
