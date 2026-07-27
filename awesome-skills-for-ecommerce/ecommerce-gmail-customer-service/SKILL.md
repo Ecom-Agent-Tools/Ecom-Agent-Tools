@@ -1,7 +1,7 @@
 ---
 name: ecommerce-gmail-customer-service
 description: "Safely triage e-commerce customer-service Gmail threads: discover public storefront evidence with a guarded browser fallback, classify requests, match products and orders, check campaigns and policies, and create auditable reply drafts with escalation safeguards."
-version: 1.2.0
+version: 1.2.1
 metadata:
   openclaw:
     requires:

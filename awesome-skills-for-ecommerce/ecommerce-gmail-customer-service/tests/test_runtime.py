@@ -1,6 +1,5 @@
 """Offline smoke tests; no Gmail, OAuth, or merchant connection is required."""
 
-import importlib.util
 import json
 import os
 import subprocess
@@ -12,19 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-DISCOVERY_SPEC = importlib.util.spec_from_file_location(
-    "discover_store", ROOT / "scripts" / "discover_store.py"
-)
-discover_store = importlib.util.module_from_spec(DISCOVERY_SPEC)
-assert DISCOVERY_SPEC.loader
-DISCOVERY_SPEC.loader.exec_module(discover_store)
-
-BROWSER_IMPORT_SPEC = importlib.util.spec_from_file_location(
-    "import_browser_discovery", ROOT / "scripts" / "import_browser_discovery.py"
-)
-import_browser_discovery = importlib.util.module_from_spec(BROWSER_IMPORT_SPEC)
-assert BROWSER_IMPORT_SPEC.loader
-BROWSER_IMPORT_SPEC.loader.exec_module(import_browser_discovery)
+import discover_store
+import import_browser_discovery
 
 
 class RuntimeTests(unittest.TestCase):
