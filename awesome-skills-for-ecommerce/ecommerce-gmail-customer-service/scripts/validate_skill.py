@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DISCLOSURE = "This email is automatically processed by AI. If manual processing is required, please include the words 'requires manual processing' in your reply."
+INVISIBLE_CODEPOINTS = ("\u200b", "\u200c", "\u200d", "\ufeff")
 
 
 def error(messages: list[str], message: str) -> None:
@@ -55,6 +56,17 @@ def main() -> int:
         error(errors, "SKILL.md version must be valid semver")
     if "metadata:\n  openclaw:" not in skill_text:
         error(errors, "SKILL.md metadata must declare metadata.openclaw")
+    for marker in [
+        "## Permissions and consent boundaries",
+        "`file_read`",
+        "`file_write`",
+        "`env`",
+        "`network`",
+        "`shell`",
+        "## Admin-only configuration changes",
+    ]:
+        if marker not in skill_text:
+            error(errors, f"SKILL.md is missing permission disclosure: {marker}")
     if not (ROOT / ".clawhubignore").is_file():
         error(errors, "Missing .clawhubignore")
     for relative in [
@@ -163,8 +175,14 @@ def main() -> int:
     ]:
         if marker not in workflow:
             error(errors, f"Default workflow is missing: {marker}")
-    if "import_browser_discovery.py" not in workflow:
+    if "import_browser_discovery.py --confirm-owner-request" not in workflow:
         error(errors, "Default workflow is missing the guarded browser fallback")
+    for marker in [
+        "draft_learning.py snapshot --confirm-owner-request",
+        "user_memory.py merge --confirm-owner-request",
+    ]:
+        if marker not in workflow:
+            error(errors, f"Default workflow is missing an owner-confirmed learning write: {marker}")
 
     onboarding = (ROOT / "references" / "onboarding.md").read_text(encoding="utf-8")
     for marker in [
@@ -180,26 +198,60 @@ def main() -> int:
         "simulation testing",
         "requires manual processing",
         "completion",
+        "USER_CONFIRMED_IANA_TIMEZONE",
+        "scripts/configure.py schedule",
+        "--timezone '<USER_CONFIRMED_IANA_TIMEZONE>'",
+        "verify --require-schedule",
+        "--confirm-owner-request",
     ]:
         if marker not in onboarding:
             error(errors, f"The installation guide is missing: {marker}")
+    if "Asia/Shanghai" in onboarding:
+        error(errors, "The installation guide must not hard-code a timezone")
     storefront_reference = (ROOT / "references" / "storefront-discovery.md").read_text(
         encoding="utf-8"
     )
     for marker in [
         "Guarded browser fallback",
-        "import_browser_discovery.py",
+        "import_browser_discovery.py --input /private/path/browser-discovery.json --confirm-owner-request",
         "discovery_method=browser_fallback",
         "Do not log in",
     ]:
         if marker not in storefront_reference:
             error(errors, f"Browser fallback guide is missing: {marker}")
 
+    script_guards = {
+        "scripts/import_browser_discovery.py": [
+            "args.confirm_owner_request",
+            "Browser discovery output must remain inside the private runtime directory",
+        ],
+        "scripts/draft_learning.py": [
+            "requires explicitly enabled learning with recorded consent"
+        ],
+        "scripts/user_memory.py": [
+            "requires explicitly enabled learning with recorded consent"
+        ],
+    }
+    for relative, markers in script_guards.items():
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                error(errors, f"Missing owner-confirmation guard in {relative}: {marker}")
+
     config = json.loads(
         (ROOT / "assets" / "default-config.json").read_text(encoding="utf-8")
     )
     if config.get("version") != 3:
         error(errors, "The default configuration version must be 3")
+    if config.get("timezone") != "":
+        error(errors, "The default timezone must be empty until the owner confirms it")
+    scheduling = config.get("scheduling", {})
+    if scheduling.get("timezone_confirmed_at") is not None:
+        error(errors, "Default timezone_confirmed_at must be null")
+    if scheduling.get("quiet_hours") != "":
+        error(errors, "Default quiet_hours must be empty")
+    if scheduling.get("quiet_hours_confirmed_at") is not None:
+        error(errors, "Default quiet_hours_confirmed_at must be null")
     if config.get("automation", {}).get("send_mode") != "draft_only":
         error(errors, "The default sending mode must be draft_only")
     if config.get("automation", {}).get("ai_disclosure", {}).get("text") != DISCLOSURE:
@@ -228,11 +280,21 @@ def main() -> int:
             "agents/openai.yaml default prompt does not explicitly mention Skill",
         )
 
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for marker in [
+        "@ecom-agent-tools/ecommerce-gmail-customer-service",
+        "https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools",
+    ]:
+        if marker not in readme:
+            error(errors, f"README.md is missing release provenance: {marker}")
+
     for path in ROOT.rglob("*"):
         if path.is_file() and path.suffix in {".md", ".py", ".json", ".csv", ".yaml"}:
             text = path.read_text(encoding="utf-8")
             if "TODO" in text and path.name != "validate_skill.py":
                 error(errors, f"The file still contains TODO: {path.relative_to(ROOT)}")
+            if any(codepoint in text for codepoint in INVISIBLE_CODEPOINTS):
+                error(errors, f"The file contains invisible Unicode: {path.relative_to(ROOT)}")
 
     if errors:
         for item in errors:

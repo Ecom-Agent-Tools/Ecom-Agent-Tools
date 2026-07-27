@@ -14,6 +14,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = SKILL_DIR / "assets"
@@ -32,6 +33,24 @@ RUNTIME_NAMES = {
     "persona": "persona.md",
     "user-memory": "user_memory.md",
 }
+
+
+def require_explicit_owner_confirmation(args: argparse.Namespace) -> None:
+    if not getattr(args, "confirm_owner_request", False):
+        raise SystemExit(
+            "This changes operator-owned runtime state. Confirm the current owner's request and rerun with --confirm-owner-request"
+        )
+
+
+def validate_iana_timezone(value: str) -> str:
+    timezone_name = value.strip()
+    if not timezone_name:
+        raise SystemExit("Timezone must be a non-empty IANA timezone name")
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise SystemExit(f"Unknown IANA timezone: {timezone_name}") from exc
+    return timezone_name
 
 
 def runtime_dir() -> Path:
@@ -150,7 +169,7 @@ def init_runtime(_: argparse.Namespace) -> None:
         )
     print("Default sending mode: draft_only")
     print(
-        "Next step: Review config.json, system-prompt.md, workflow.md, persona.md, and user_memory.md, then run verify."
+        "Next step: Review config.json, system-prompt.md, workflow.md, persona.md, and user_memory.md. Record an owner-confirmed timezone and quiet-hours policy before creating any cron task."
     )
 
 
@@ -197,6 +216,16 @@ def print_status(args: argparse.Namespace) -> None:
                 .get("ai_disclosure", {})
                 .get("enabled"),
                 "learning_enabled": config.get("learning", {}).get("enabled", False),
+                "timezone": config.get("timezone", ""),
+                "schedule_timezone_confirmed_at": config.get("scheduling", {}).get(
+                    "timezone_confirmed_at"
+                ),
+                "schedule_quiet_hours": config.get("scheduling", {}).get(
+                    "quiet_hours", ""
+                ),
+                "schedule_quiet_hours_confirmed_at": config.get(
+                    "scheduling", {}
+                ).get("quiet_hours_confirmed_at"),
             }
         )
     if args.json:
@@ -235,6 +264,7 @@ def edit_runtime(args: argparse.Namespace) -> None:
             "Only running copies can be edited: config, system-prompt, workflow, persona, or user-memory. The default baseline is not editable."
         )
     ensure_initialized()
+    require_explicit_owner_confirmation(args)
     editor_text = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
     editor = shlex.split(editor_text)
     if not editor:
@@ -247,6 +277,7 @@ def edit_runtime(args: argparse.Namespace) -> None:
 
 
 def set_disclosure(args: argparse.Namespace) -> None:
+    require_explicit_owner_confirmation(args)
     config = read_config()
     automation = config.setdefault("automation", {})
     disclosure = automation.setdefault("ai_disclosure", {})
@@ -258,6 +289,7 @@ def set_disclosure(args: argparse.Namespace) -> None:
 
 
 def set_learning(args: argparse.Namespace) -> None:
+    require_explicit_owner_confirmation(args)
     config = read_config()
     learning = config.setdefault("learning", {})
     enabled = args.value == "on"
@@ -271,6 +303,31 @@ def set_learning(args: argparse.Namespace) -> None:
         print(
             "Only use this after the owner has explicitly agreed to the 30-day, customer-service-only, redacted learning scope."
         )
+
+
+def configure_schedule(args: argparse.Namespace) -> None:
+    require_explicit_owner_confirmation(args)
+    timezone_name = validate_iana_timezone(args.timezone)
+    quiet_hours = args.quiet_hours.strip()
+    if not quiet_hours:
+        raise SystemExit(
+            "Quiet-hours policy is required; use 'none' only when the owner explicitly confirms that no quiet period applies"
+        )
+    config = read_config()
+    confirmed_at = datetime.now(timezone.utc).isoformat()
+    config["timezone"] = timezone_name
+    scheduling = config.setdefault("scheduling", {})
+    scheduling.update(
+        {
+            "timezone_confirmed_at": confirmed_at,
+            "quiet_hours": quiet_hours,
+            "quiet_hours_confirmed_at": confirmed_at,
+        }
+    )
+    atomic_json(runtime_path("config"), config)
+    print(f"Confirmed timezone: {timezone_name}")
+    print(f"Confirmed quiet-hours policy: {quiet_hours}")
+    print("Run python3 scripts/configure.py verify --require-schedule before creating a disabled cron task")
 
 
 def set_storefront_status(args: argparse.Namespace) -> None:
@@ -305,6 +362,7 @@ def restore_runtime(args: argparse.Namespace) -> None:
     if args.name not in {"system-prompt", "workflow", "persona"}:
         raise SystemExit("restore only supports system-prompt, workflow or persona")
     ensure_initialized()
+    require_explicit_owner_confirmation(args)
     target = runtime_path(args.name)
     backup_dir = runtime_dir() / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -316,7 +374,7 @@ def restore_runtime(args: argparse.Namespace) -> None:
     print(f"Restored from read-only baseline: {target}")
 
 
-def verify_runtime(_: argparse.Namespace) -> None:
+def verify_runtime(args: argparse.Namespace) -> None:
     protect_baseline()
     ensure_initialized()
     errors = []
@@ -364,6 +422,34 @@ def verify_runtime(_: argparse.Namespace) -> None:
     learning = config.get("learning", {})
     if not isinstance(learning.get("enabled"), bool):
         errors.append("learning.enabled must be a Boolean value")
+    timezone_name = config.get("timezone", "")
+    if not isinstance(timezone_name, str):
+        errors.append("timezone must be a string")
+    elif timezone_name:
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            errors.append("timezone must be a valid IANA timezone name when set")
+    scheduling = config.get("scheduling", {})
+    if not isinstance(scheduling, dict):
+        errors.append("scheduling must be an object")
+    elif args.require_schedule:
+        if not timezone_name:
+            errors.append(
+                "A scheduled task requires a confirmed timezone; run scripts/configure.py schedule first"
+            )
+        if not isinstance(scheduling.get("timezone_confirmed_at"), str) or not scheduling.get(
+            "timezone_confirmed_at"
+        ):
+            errors.append("A scheduled task requires timezone_confirmed_at")
+        if not isinstance(scheduling.get("quiet_hours"), str) or not scheduling.get(
+            "quiet_hours"
+        ):
+            errors.append("A scheduled task requires an explicit quiet-hours policy")
+        if not isinstance(
+            scheduling.get("quiet_hours_confirmed_at"), str
+        ) or not scheduling.get("quiet_hours_confirmed_at"):
+            errors.append("A scheduled task requires quiet_hours_confirmed_at")
     storefront = config.get("storefront", {})
     if storefront.get("status") not in {
         "unconfigured",
@@ -457,16 +543,38 @@ def build_parser() -> argparse.ArgumentParser:
         "edit", help="Open running copy with safe argument list"
     )
     edit_parser.add_argument("name", choices=list(RUNTIME_NAMES))
+    edit_parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required because this changes an operator-owned runtime file",
+    )
     edit_parser.set_defaults(func=edit_runtime)
 
     set_parser = subparsers.add_parser("set", help="Set controlled options")
     set_parser.add_argument("setting", choices=["disclosure", "learning"])
     set_parser.add_argument("value", choices=["on", "off"])
+    set_parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required because this changes an operator-owned runtime file",
+    )
     set_parser.set_defaults(
         func=lambda args: (
             set_disclosure(args) if args.setting == "disclosure" else set_learning(args)
         )
     )
+
+    schedule_parser = subparsers.add_parser(
+        "schedule", help="Record owner-confirmed timezone and quiet-hours safeguards"
+    )
+    schedule_parser.add_argument("--timezone", required=True)
+    schedule_parser.add_argument("--quiet-hours", required=True)
+    schedule_parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required because this records operator-approved scheduling state",
+    )
+    schedule_parser.set_defaults(func=configure_schedule)
 
     storefront_parser = subparsers.add_parser(
         "storefront", help="Confirm a discovered storefront or record that none exists"
@@ -480,10 +588,20 @@ def build_parser() -> argparse.ArgumentParser:
     restore_parser.add_argument(
         "name", choices=["system-prompt", "workflow", "persona"]
     )
+    restore_parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required because restore writes an operator-owned runtime file",
+    )
     restore_parser.set_defaults(func=restore_runtime)
 
     verify_parser = subparsers.add_parser(
         "verify", help="Verify running copy and read-only baseline"
+    )
+    verify_parser.add_argument(
+        "--require-schedule",
+        action="store_true",
+        help="Also require owner-confirmed timezone and quiet-hours safeguards",
     )
     verify_parser.set_defaults(func=verify_runtime)
     return parser

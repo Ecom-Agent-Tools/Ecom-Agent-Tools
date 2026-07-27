@@ -2,7 +2,12 @@
   "version": 3,
   "store_name": "",
   "default_language": "match_customer",
-  "timezone": "Asia/Shanghai",
+  "timezone": "",
+  "scheduling": {
+    "timezone_confirmed_at": null,
+    "quiet_hours": "",
+    "quiet_hours_confirmed_at": null
+  },
   "gmail": {
     "account": "",
     "query": "label:ECS/ToProcess is:unread newer_than:30d",

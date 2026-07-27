@@ -19,6 +19,5 @@
 Users can rename or modify any personal field during installation. Run the copy and edit it with the following command:
 
 ```bash
-python3 scripts/configure.py edit persona
+python3 scripts/configure.py edit persona --confirm-owner-request
 ```
-

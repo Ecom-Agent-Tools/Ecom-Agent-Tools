@@ -78,7 +78,7 @@ Prefer `--body-file` to avoid multi-line body text being destroyed by shell esca
 
 ## Manually modify the learning detection of Draft
 
-When learning is enabled, the desensitization baseline is saved immediately after the draft is successfully created:
+When learning is enabled with recorded consent and the owner confirms the current write, the desensitization baseline can be saved after the draft is successfully created:
 
 ```bash
 python3 scripts/draft_learning.py snapshot \
@@ -86,7 +86,8 @@ python3 scripts/draft_learning.py snapshot \
   --thread-id THREAD_ID \
   --message-id LATEST_MESSAGE_ID \
   --intent FULFILLMENT-DELAY-CARRIER \
---body-file/controlled temporary directory/reply.txt
+  --body-file /controlled-temporary-directory/reply.txt \
+  --confirm-owner-request
 ```
 
 In subsequent rounds, use `gog gmail drafts get DRAFT_ID -j` to obtain the current draft; if the draft has been sent, obtain the corresponding text sent by the merchant from the complete thread. Write the text to a temporary file with controlled permissions, and then compare:
@@ -129,4 +130,3 @@ Before sending, recheck the recipient, thread, latest message, all requests, ord
 ## Network retry
 
 Only retry for timeout, connection reset, temporary proxy or 5xx, up to 3 times, wait 5, 10, 20 seconds. 401/403, scope, data validation, policy violation and parameter errors stop immediately and write `ECS/Error`.
-

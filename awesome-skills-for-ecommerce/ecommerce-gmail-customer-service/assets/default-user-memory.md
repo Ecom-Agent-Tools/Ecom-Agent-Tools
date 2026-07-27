@@ -6,8 +6,8 @@
 
 - Learning is not enabled by default; historical emails are read or Draft modifications are analyzed only with explicit user consent.
 - Only desensitized, generalizable summaries are saved, and original emails, attachments or customer personal information are not saved.
-- You can run `python3 scripts/configure.py edit user-memory` to view or modify this file.
-- You can run `python3 scripts/configure.py set learning off` to stop subsequent reading and writing; deleting existing memory requires explicit user request.
+- You can run `python3 scripts/configure.py edit user-memory --confirm-owner-request` only after the current owner explicitly requests a change.
+- You can run `python3 scripts/configure.py set learning off --confirm-owner-request` to stop subsequent reading and writing; deleting existing memory requires explicit user request.
 
 ## Current status
 
@@ -45,4 +45,3 @@ Not yet.
 }
 ```
 <!-- ECS_MEMORY_JSON_END -->
-

@@ -254,14 +254,35 @@ def load_input(path: str) -> dict[str, Any]:
     return raw
 
 
+def private_runtime_output(path: Path) -> Path:
+    runtime_root = runtime_dir().resolve()
+    output = path.expanduser().resolve()
+    try:
+        output.relative_to(runtime_root)
+    except ValueError as exc:
+        raise ValueError(
+            "Browser discovery output must remain inside the private runtime directory"
+        ) from exc
+    return output
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate and import a guarded browser storefront discovery snapshot"
     )
     parser.add_argument("--input", required=True, help="JSON file path, or - for stdin")
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required because import writes a discovery snapshot and runtime configuration",
+    )
     args = parser.parse_args()
     try:
+        if not args.confirm_owner_request:
+            raise ValueError(
+                "Import changes operator-owned runtime state; confirm the current owner's request and rerun with --confirm-owner-request"
+            )
         raw = load_input(args.input)
         config = runtime_config()
         storefront = config.get("storefront", {})
@@ -271,10 +292,10 @@ def main() -> int:
             urllib.parse.urlsplit(configured_url).hostname or ""
         ) != normalized_host(urllib.parse.urlsplit(payload["storefront_url"]).hostname or ""):
             raise ValueError("Browser snapshot host does not match the configured storefront")
-        output = (
+        output = private_runtime_output(
             args.output
             or Path(storefront.get("discovery_file") or runtime_dir() / "store-discovery.json")
-        ).expanduser().resolve()
+        )
         atomic_json(output, payload)
         update_runtime_config(payload["storefront_url"], output, payload["retrieved_at"])
     except (OSError, ValueError, json.JSONDecodeError) as exc:

@@ -25,16 +25,35 @@ It turns incoming customer threads into auditable reply drafts: it separates mul
 
 ## Install
 
-Clone this repository, then install the Skill from the repository checkout:
+### Registry installation
+
+After v1.2.2 is published, install the versioned registry release into the current Agent workspace:
+
+```bash
+openclaw skills install @ecom-agent-tools/ecommerce-gmail-customer-service --version 1.2.2
+openclaw skills info ecommerce-gmail-customer-service
+```
+
+Do not use `--acknowledge-clawhub-risk` as a substitute for reviewing a release. Confirm that `openclaw skills info` reports the expected Agent-workspace path before completing OAuth or setup.
+
+### Local checkout installation
+
+For development or a reviewed local checkout, install into the current Agent workspace rather than the shared global skills directory:
 
 ```bash
 git clone https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools.git
 cd Ecom-Agent-Tools
-openclaw skills install ./awesome-skills-for-ecommerce/ecommerce-gmail-customer-service --global
+openclaw skills install ./awesome-skills-for-ecommerce/ecommerce-gmail-customer-service
 openclaw skills info ecommerce-gmail-customer-service
 ```
 
 If OpenClaw is not configured yet, run `openclaw onboard` first. Do not place OAuth client files, tokens, or other secrets in this repository.
+
+## Source and release evidence
+
+- Source repository: <https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/ecommerce-gmail-customer-service-v1.2.2/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service>
+- Before granting Gmail access, inspect the exact release file list with `clawhub inspect ecommerce-gmail-customer-service --version 1.2.2 --files`.
+- The public v1.2.2 release must attach its GitHub repository, commit, ref, and Skill path in ClawHub metadata. Do not treat an unsigned or unprovenanced bundle as equivalent to this source checkout.
 
 ## First-time setup
 
@@ -68,12 +87,13 @@ Label customer email threads with `ECS/ToProcess`, then ask the Agent to process
 Useful commands:
 
 ```bash
-python3 scripts/configure.py edit system-prompt
-python3 scripts/configure.py edit workflow
-python3 scripts/configure.py edit persona
+python3 scripts/configure.py edit system-prompt --confirm-owner-request
+python3 scripts/configure.py edit workflow --confirm-owner-request
+python3 scripts/configure.py edit persona --confirm-owner-request
 python3 scripts/configure.py path user-memory
-python3 scripts/configure.py set disclosure on
-python3 scripts/configure.py set learning on
+python3 scripts/configure.py set disclosure on --confirm-owner-request
+python3 scripts/configure.py set learning on --confirm-owner-request
+python3 scripts/configure.py schedule --timezone '<USER_CONFIRMED_IANA_TIMEZONE>' --quiet-hours '<USER_CONFIRMED_QUIET_HOURS_OR_NONE>' --confirm-owner-request
 ```
 
 The optional AI disclosure is:
@@ -86,7 +106,9 @@ Customers can request escalation by including `requires manual processing` anywh
 
 This Skill starts in `draft_only` mode. It does not guess order facts, inventory, shipping status, refunds, or policy eligibility. It also never treats historical writing preferences as a replacement for current order data, policies, platform rules, or applicable law.
 
-Storefront discovery reads only public pages, respects `robots.txt`, rejects private-network and cross-host access, and uses strict page and response limits. If direct discovery cannot fetch or render the confirmed site, the documented browser/browse fallback remains read-only and its structured output must pass `scripts/import_browser_discovery.py` before use. Public storefront content is candidate evidence only; complete orders and customer-specific decisions still require an authorized commerce connector.
+Runtime prompt, workflow, persona, configuration, learning, restore, schedule, browser-import, and memory-write changes are administrator actions. They require a current owner request and the `--confirm-owner-request` flag; learning snapshots and memory merges also require `learning.enabled=true` with a recorded consent time. Normal email processing must not make those changes. Before any cron task, record the owner-confirmed IANA timezone and quiet-hours policy, then run `python3 scripts/configure.py verify --require-schedule`.
+
+Storefront discovery reads only public pages, respects `robots.txt`, rejects private-network and cross-host access, and uses strict page and response limits. If direct discovery cannot fetch or render the confirmed site, the documented browser/browse fallback remains read-only and its structured output must pass `scripts/import_browser_discovery.py --confirm-owner-request` before use. Public storefront content is candidate evidence only; complete orders and customer-specific decisions still require an authorized commerce connector.
 
 Review the generated drafts before sending, especially during initial deployment and after changing a connector, system prompt, or workflow.
 
@@ -98,3 +120,7 @@ Review the generated drafts before sending, especially during initial deployment
 - [references/intent-taxonomy.csv](references/intent-taxonomy.csv) — three-level customer-intent taxonomy.
 - [references/reply-playbooks.md](references/reply-playbooks.md) — reusable reply approaches.
 - [assets/default-system-prompt.md](assets/default-system-prompt.md) — immutable baseline safety prompt.
+- [scripts/configure.py](scripts/configure.py) — runtime configuration and confirmed scheduling safeguards.
+- [scripts/discover_store.py](scripts/discover_store.py) and [scripts/import_browser_discovery.py](scripts/import_browser_discovery.py) — guarded public-storefront discovery and validation.
+- [scripts/draft_learning.py](scripts/draft_learning.py) and [scripts/user_memory.py](scripts/user_memory.py) — optional redacted learning helpers.
+- [scripts/validate_skill.py](scripts/validate_skill.py) and [tests/test_runtime.py](tests/test_runtime.py) — offline package validation and runtime smoke tests.

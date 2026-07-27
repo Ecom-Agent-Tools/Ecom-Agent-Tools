@@ -7,6 +7,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BEGIN, END = "<!-- ECS_MEMORY_JSON_BEGIN -->", "<!-- ECS_MEMORY_JSON_END -->"
 MEMORY = (Path(os.environ.get("OPENCLAW_STATE_DIR", Path.home()/".openclaw")) / "ecommerce-gmail-customer-service" / "user_memory.md")
+CONFIG = MEMORY.with_name("config.json")
+
+
+def require_learning_consent(args):
+    if not args.confirm_owner_request:
+        raise SystemExit(
+            "Writing user memory requires the current owner's request and --confirm-owner-request"
+        )
+    try:
+        config = json.loads(CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Unable to read runtime configuration: {exc}") from exc
+    learning = config.get("learning", {})
+    if learning.get("enabled") is not True or not learning.get("consent_granted_at"):
+        raise SystemExit(
+            "Writing user memory requires explicitly enabled learning with recorded consent"
+        )
 
 def load():
     text = MEMORY.read_text(encoding="utf-8")
@@ -17,6 +34,7 @@ def write(text, data):
     tmp = MEMORY.with_suffix(".tmp"); tmp.write_text(text.split(BEGIN,1)[0] + replacement + text.split(END,1)[1], encoding="utf-8"); os.chmod(tmp,0o600); os.replace(tmp,MEMORY)
 def unique(values): return list(dict.fromkeys(v for v in values if v))
 def merge(args):
+    require_learning_consent(args)
     text, data = load(); update=json.loads(Path(args.input).read_text(encoding="utf-8")); now=datetime.now(timezone.utc).isoformat()
     profile=update.get("style_profile",{}); target=data.setdefault("style_profile", {"status":"not_reviewed","items":[]})
     if profile.get("status"): target["status"]=profile["status"]
@@ -39,4 +57,4 @@ def merge(args):
     if "history_learning" in update: data["history_learning"].update(update["history_learning"])
     data["updated_at"]=now; write(text,data); print(json.dumps({"updated":True,"playbooks":len(plans)}))
 if __name__=="__main__":
-    p=argparse.ArgumentParser(); s=p.add_subparsers(dest="cmd",required=True); m=s.add_parser("merge");m.add_argument("--input",required=True);m.set_defaults(func=merge); a=p.parse_args();a.func(a)
+    p=argparse.ArgumentParser(); s=p.add_subparsers(dest="cmd",required=True); m=s.add_parser("merge");m.add_argument("--input",required=True);m.add_argument("--confirm-owner-request",action="store_true");m.set_defaults(func=merge); a=p.parse_args();a.func(a)

@@ -27,7 +27,7 @@ After the mailbox reading verification is successful, ask as it is:
 
 After the user agrees:
 
-1. Run `python3 scripts/configure.py set learning on` to record the consent time.
+1. After the current owner explicitly agrees to the stated scope, run `python3 scripts/configure.py set learning on --confirm-owner-request` to record the consent time.
 2. For dedicated customer service emails, use `newer_than:30d` to pull all pages; for non-dedicated email addresses, first narrow the query to the label, alias or domain confirmed by the user.
 3. Take the thread containing the reply sent by the merchant as the main sample, pull the receipt and sending text in the thread in the past 30 days, and reconstruct "Customer problem → Merchant reply → Follow-up results". Attachments are not downloaded.
 4. Exclude automatic notifications, marketing mass mailings, internal emails, spam emails, pure system receipts, threads without customer questions and content that cannot be confirmed to be manual responses from the merchant.
@@ -64,14 +64,14 @@ Process historical cases after tone confirmation:
 
 Only executed when learning is enabled:
 
-1. After AI creates the draft, immediately use `scripts/draft_learning.py snapshot` to save the short-term desensitization baseline, draft ID, thread ID, latest customer message ID and third-level intent; the undesensitized text will not be saved.
+1. After AI creates the draft, only with recorded learning consent and a current owner request use `scripts/draft_learning.py snapshot --confirm-owner-request` to save the short-term desensitization baseline, draft ID, thread ID, latest customer message ID and third-level intent; the undesensitized text will not be saved.
 2. Check the tracked draft and its thread first in each round. If the draft still exists, pull the current text and run `compare`; if it has been sent, use the text sent by the corresponding merchant in the thread for comparison.
 3. Treat semantic changes only as learning signals. Ignore differences caused by Gmail's auto-formatting, citation history, signature position, whitespace, line breaks, and AI claims switches.
 4. Divide the modifications into: tone preferences, structural preferences, fact corrections, treatment options changes, policy/authority changes, and this case only exceptions.
-5. Tone and structure modifications can be incorporated into the style profile. Generalizable solution modifications are merged with scene keys by third-level intent. Instance values ​​such as order number, name, amount, address, etc. cannot be written.
+5. Tone and structure modifications can be incorporated into the style profile. Generalizable solution modifications are merged with scene keys by third-level intent. Instance values such as order number, name, amount, address, etc. cannot be written.
 6. Fact correction only prompts that there may be problems with the connector or matching, and does not write the corrected specific facts into global memory. Policy changes must be updated back to the official policy source, and rules cannot be established solely through Draft modifications.
 7. Modifications involving illegality, discrimination, deception, product safety, privacy, chargebacks, over-authorization refunds or bypassing platform rules shall not be used as executable memory; write an internal warning and transfer it to manual review.
-8. Pass the stable `observation_id` of the same modification to `user_memory.py merge`; repeated runs must not repeatedly add evidence.
+8. After the owner confirms the current write, pass the stable `observation_id` of the same modification to `user_memory.py merge --confirm-owner-request`; repeated runs must not repeatedly add evidence.
 9. Clear the short-term baseline of the Draft after the merge is successful. The baseline is retained for a configured maximum number of days and will be automatically cleared upon expiration.
 
 ## 6. Retrieve memory before replying
@@ -89,7 +89,7 @@ After matching items to a full order and before pulling campaigns and policies:
 Write the desensitized updates into temporary JSON and then execute:
 
 ```bash
-python3 scripts/user_memory.py merge --input /controlled temporary directory/memory-update.json
+python3 scripts/user_memory.py merge --input /controlled-temporary-directory/memory-update.json --confirm-owner-request
 ```
 
 Minimal example:
@@ -133,4 +133,3 @@ Minimal example:
 ```
 
 Update files are deleted immediately after use. Don't put original email fragments into update JSON.
-

@@ -23,30 +23,87 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as state:
             env = {**os.environ, "OPENCLAW_STATE_DIR": state}
 
-            def call(*parts):
+            def call(*parts, check=True):
                 return subprocess.run(
                     ["python3", *parts],
                     cwd=ROOT,
                     env=env,
-                    check=True,
+                    check=check,
                     capture_output=True,
                     text=True,
                 )
 
             call("scripts/configure.py", "init")
             call("scripts/configure.py", "verify")
+            missing_schedule = call(
+                "scripts/configure.py", "verify", "--require-schedule", check=False
+            )
+            self.assertNotEqual(missing_schedule.returncode, 0)
+            self.assertIn("requires a confirmed timezone", missing_schedule.stderr)
             config_path = (
                 Path(state) / "ecommerce-gmail-customer-service" / "config.json"
             )
             old_config = json.loads(config_path.read_text())
             old_config["version"] = 2
             old_config.pop("storefront")
+            old_config.pop("scheduling")
             config_path.write_text(json.dumps(old_config))
             call("scripts/configure.py", "init")
             upgraded = json.loads(config_path.read_text())
             self.assertEqual(upgraded["version"], 3)
             self.assertTrue(upgraded["storefront"]["public_sources_only"])
+            self.assertEqual(upgraded["timezone"], "")
+            self.assertEqual(upgraded["scheduling"]["quiet_hours"], "")
             call("scripts/configure.py", "verify")
+            unconfirmed_schedule = call(
+                "scripts/configure.py",
+                "schedule",
+                "--timezone",
+                "UTC",
+                "--quiet-hours",
+                "none",
+                check=False,
+            )
+            self.assertNotEqual(unconfirmed_schedule.returncode, 0)
+            self.assertIn("--confirm-owner-request", unconfirmed_schedule.stderr)
+            call(
+                "scripts/configure.py",
+                "schedule",
+                "--timezone",
+                "UTC",
+                "--quiet-hours",
+                "none",
+                "--confirm-owner-request",
+            )
+            scheduled = json.loads(config_path.read_text())
+            self.assertEqual(scheduled["timezone"], "UTC")
+            self.assertEqual(scheduled["scheduling"]["quiet_hours"], "none")
+            call("scripts/configure.py", "verify", "--require-schedule")
+            invalid_timezone = call(
+                "scripts/configure.py",
+                "schedule",
+                "--timezone",
+                "Invalid/Timezone",
+                "--quiet-hours",
+                "none",
+                "--confirm-owner-request",
+                check=False,
+            )
+            self.assertNotEqual(invalid_timezone.returncode, 0)
+            self.assertIn("Unknown IANA timezone", invalid_timezone.stderr)
+            unconfirmed_learning = call(
+                "scripts/configure.py", "set", "learning", "on", check=False
+            )
+            self.assertNotEqual(unconfirmed_learning.returncode, 0)
+            self.assertIn("--confirm-owner-request", unconfirmed_learning.stderr)
+            call(
+                "scripts/configure.py",
+                "set",
+                "learning",
+                "on",
+                "--confirm-owner-request",
+            )
+            self.assertTrue(json.loads(config_path.read_text())["learning"]["enabled"])
             discovery_path = (
                 Path(state)
                 / "ecommerce-gmail-customer-service"
@@ -60,14 +117,15 @@ class RuntimeTests(unittest.TestCase):
                     }
                 )
             )
-            upgraded["storefront"].update(
+            current_config = json.loads(config_path.read_text())
+            current_config["storefront"].update(
                 {
                     "status": "discovered",
                     "url": "https://shop.example/",
                     "discovery_file": str(discovery_path),
                 }
             )
-            config_path.write_text(json.dumps(upgraded))
+            config_path.write_text(json.dumps(current_config))
             call("scripts/configure.py", "storefront", "confirmed")
             self.assertEqual(
                 json.loads(config_path.read_text())["storefront"]["status"], "confirmed"
@@ -88,10 +146,38 @@ class RuntimeTests(unittest.TestCase):
                     }
                 )
             )
-            call("scripts/user_memory.py", "merge", "--input", str(update))
+            unconfirmed_memory = call(
+                "scripts/user_memory.py", "merge", "--input", str(update), check=False
+            )
+            self.assertNotEqual(unconfirmed_memory.returncode, 0)
+            self.assertIn("--confirm-owner-request", unconfirmed_memory.stderr)
+            call(
+                "scripts/user_memory.py",
+                "merge",
+                "--input",
+                str(update),
+                "--confirm-owner-request",
+            )
             before, after = Path(state) / "before.txt", Path(state) / "after.txt"
             before.write_text("Order 123456 is delayed.")
             after.write_text("We are sorry order 123456 is delayed.")
+            unconfirmed_snapshot = call(
+                "scripts/draft_learning.py",
+                "snapshot",
+                "--draft-id",
+                "d1",
+                "--thread-id",
+                "t1",
+                "--message-id",
+                "m1",
+                "--intent",
+                "SHIP-DELAY",
+                "--body-file",
+                str(before),
+                check=False,
+            )
+            self.assertNotEqual(unconfirmed_snapshot.returncode, 0)
+            self.assertIn("--confirm-owner-request", unconfirmed_snapshot.stderr)
             call(
                 "scripts/draft_learning.py",
                 "snapshot",
@@ -105,6 +191,7 @@ class RuntimeTests(unittest.TestCase):
                 "SHIP-DELAY",
                 "--body-file",
                 str(before),
+                "--confirm-owner-request",
             )
             result = call(
                 "scripts/draft_learning.py",
@@ -115,6 +202,24 @@ class RuntimeTests(unittest.TestCase):
                 str(after),
             )
             self.assertTrue(json.loads(result.stdout)["changed"])
+            call(
+                "scripts/configure.py",
+                "set",
+                "learning",
+                "off",
+                "--confirm-owner-request",
+            )
+            self.assertFalse(json.loads(config_path.read_text())["learning"]["enabled"])
+            disabled_memory = call(
+                "scripts/user_memory.py",
+                "merge",
+                "--input",
+                str(update),
+                "--confirm-owner-request",
+                check=False,
+            )
+            self.assertNotEqual(disabled_memory.returncode, 0)
+            self.assertIn("requires explicitly enabled learning", disabled_memory.stderr)
 
     def test_public_storefront_parser_and_network_guard(self):
         html = """
@@ -212,12 +317,47 @@ class RuntimeTests(unittest.TestCase):
             )
             input_path = Path(state) / "browser-input.json"
             input_path.write_text(json.dumps(snapshot), encoding="utf-8")
+            unconfirmed = subprocess.run(
+                [
+                    "python3",
+                    "scripts/import_browser_discovery.py",
+                    "--input",
+                    str(input_path),
+                ],
+                cwd=ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(unconfirmed.returncode, 0)
+            self.assertIn("--confirm-owner-request", unconfirmed.stderr)
+            with tempfile.TemporaryDirectory() as outside:
+                escaped_output = subprocess.run(
+                    [
+                        "python3",
+                        "scripts/import_browser_discovery.py",
+                        "--input",
+                        str(input_path),
+                        "--output",
+                        str(Path(outside) / "store-discovery.json"),
+                        "--confirm-owner-request",
+                    ],
+                    cwd=ROOT,
+                    env=env,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            self.assertNotEqual(escaped_output.returncode, 0)
+            self.assertIn("private runtime directory", escaped_output.stderr)
             result = subprocess.run(
                 [
                     "python3",
                     "scripts/import_browser_discovery.py",
                     "--input",
                     str(input_path),
+                    "--confirm-owner-request",
                 ],
                 cwd=ROOT,
                 env=env,
