@@ -8,13 +8,17 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import shutil
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from auto_reply_permissions import (
+    load_pending,
+    load_permissions,
+    migrate_legacy_memory_permissions,
+)
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = SKILL_DIR / "assets"
@@ -25,6 +29,9 @@ DEFAULTS = {
     "workflow": ASSETS_DIR / "default-workflow.md",
     "persona": ASSETS_DIR / "default-persona.md",
     "user-memory": ASSETS_DIR / "default-user-memory.md",
+    "auto-reply-permissions": ASSETS_DIR / "default-auto-reply-permissions.json",
+    "pending-category-confirmations": ASSETS_DIR
+    / "default-pending-category-confirmations.json",
 }
 RUNTIME_NAMES = {
     "config": "config.json",
@@ -32,6 +39,8 @@ RUNTIME_NAMES = {
     "workflow": "workflow.md",
     "persona": "persona.md",
     "user-memory": "user_memory.md",
+    "auto-reply-permissions": "auto_reply_permissions.json",
+    "pending-category-confirmations": "pending_category_confirmations.json",
 }
 
 
@@ -108,11 +117,77 @@ def upgrade_runtime_config() -> bool:
     config_path = runtime_path("config")
     config = json.loads(config_path.read_text(encoding="utf-8"))
     defaults = json.loads(DEFAULTS["config"].read_text(encoding="utf-8"))
+    previous_version = config.get("version")
     changed = merge_missing(config, defaults)
     if (
-        isinstance(config.get("version"), int)
-        and config["version"] < defaults["version"]
+        isinstance(previous_version, int)
+        and previous_version < defaults["version"]
     ):
+        automation = config.setdefault("automation", {})
+        if not isinstance(automation, dict):
+            automation = {}
+            config["automation"] = automation
+        if previous_version < 4:
+            # A legacy auto_send value had no owner-confirmation record or
+            # per-playbook approval gate. Migration fails closed until the
+            # owner explicitly enables the new category-based mode.
+            if automation.get("send_mode") == "auto_send":
+                automation["send_mode"] = "draft_only"
+                automation["auto_send_confirmed_at"] = None
+                changed = True
+            if "auto_send_allowlist" in automation:
+                automation.pop("auto_send_allowlist")
+                changed = True
+        if previous_version < 5:
+            storefront = config.setdefault("storefront", {})
+            if not isinstance(storefront, dict):
+                storefront = {}
+                config["storefront"] = storefront
+            legacy_status = storefront.get("status")
+            if legacy_status == "confirmed":
+                # A legacy confirmation has no durable current-owner record.
+                # Keep the snapshot for review but require re-confirmation
+                # before it can be refreshed automatically.
+                storefront["status"] = (
+                    "discovered" if storefront.get("url") else "unconfigured"
+                )
+                changed = True
+            elif legacy_status == "none":
+                storefront["status"] = "unconfigured"
+                changed = True
+            if storefront.get("owner_confirmed_at") is not None:
+                storefront["owner_confirmed_at"] = None
+                changed = True
+        if previous_version < 6:
+            # Existing releases treated learning.enabled as both permission to
+            # learn from new draft edits and permission to use prior memory.
+            # Long-term memory now participates in draft generation by default;
+            # only a deliberate later opt-out disables it.
+            memory = config.setdefault("memory", {})
+            if not isinstance(memory, dict):
+                memory = {}
+                config["memory"] = memory
+            if memory.get("usage_enabled") is not True:
+                memory["usage_enabled"] = True
+                changed = True
+            if memory.get("usage_confirmed_at") is not None:
+                memory["usage_confirmed_at"] = None
+                changed = True
+            learning = config.setdefault("learning", {})
+            if isinstance(learning, dict) and "learn_from_draft_edits" in learning:
+                learning.pop("learn_from_draft_edits")
+                changed = True
+        if previous_version < 7:
+            # Per-category automatic-reply permissions now live in an
+            # independent runtime state file. Any legacy flags found in
+            # user_memory.md are removed by init and re-created as disabled
+            # category records, so the migration fails closed.
+            if automation.get("send_mode") == "auto_send":
+                automation["send_mode"] = "draft_only"
+                automation["auto_send_confirmed_at"] = None
+            if "auto_send_allowlist" in automation:
+                automation.pop("auto_send_allowlist")
+            changed = True
         config["version"] = defaults["version"]
         changed = True
     if changed:
@@ -156,6 +231,9 @@ def init_runtime(_: argparse.Namespace) -> None:
         created.append(str(target))
     try:
         upgraded = upgrade_runtime_config()
+        migrated_legacy_permissions = migrate_legacy_memory_permissions(
+            runtime_path("user-memory")
+        )
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"Unable to safely upgrade the running config: {exc}") from exc
     print(f"Running directory: {destination}")
@@ -167,9 +245,13 @@ def init_runtime(_: argparse.Namespace) -> None:
         print(
             "Added newly introduced safe defaults to config.json without replacing configured values"
         )
+    if migrated_legacy_permissions:
+        print(
+            "Moved legacy in-memory category permissions to disabled independent records; the owner must confirm them again"
+        )
     print("Default sending mode: draft_only")
     print(
-        "Next step: Review config.json, system-prompt.md, workflow.md, persona.md, and user_memory.md. Record an owner-confirmed timezone and quiet-hours policy before creating any cron task."
+        "Next step: Review config.json, system-prompt.md, workflow.md, persona.md, user_memory.md, and auto_reply_permissions.json. Automatic sending stays disabled until the owner enables it and confirms matching categories after a sent-Draft event. Record an owner-confirmed timezone and quiet-hours policy before creating any cron task."
     )
 
 
@@ -193,6 +275,8 @@ def print_status(args: argparse.Namespace) -> None:
     }
     if initialized:
         config = read_config()
+        automation = config.get("automation", {})
+        memory = config.get("memory", {})
         payload.update(
             {
                 "store_name": config.get("store_name", ""),
@@ -205,17 +289,21 @@ def print_status(args: argparse.Namespace) -> None:
                 "storefront_status": config.get("storefront", {}).get(
                     "status", "unconfigured"
                 ),
+                "storefront_owner_confirmed_at": config.get(
+                    "storefront", {}
+                ).get("owner_confirmed_at"),
                 "store_discovery_file": config.get("storefront", {}).get(
                     "discovery_file", ""
                 ),
                 "store_last_discovered_at": config.get("storefront", {}).get(
                     "last_discovered_at"
                 ),
-                "send_mode": config.get("automation", {}).get("send_mode", "unknown"),
-                "ai_disclosure": config.get("automation", {})
-                .get("ai_disclosure", {})
-                .get("enabled"),
+                "send_mode": automation.get("send_mode", "unknown"),
+                "auto_send_confirmed_at": automation.get("auto_send_confirmed_at"),
+                "ai_disclosure": automation.get("ai_disclosure", {}).get("enabled"),
                 "learning_enabled": config.get("learning", {}).get("enabled", False),
+                "memory_usage_enabled": memory.get("usage_enabled", True),
+                "memory_usage_confirmed_at": memory.get("usage_confirmed_at"),
                 "timezone": config.get("timezone", ""),
                 "schedule_timezone_confirmed_at": config.get("scheduling", {}).get(
                     "timezone_confirmed_at"
@@ -258,22 +346,41 @@ def print_path(args: argparse.Namespace) -> None:
     print(resolve_named_path(args.name))
 
 
-def edit_runtime(args: argparse.Namespace) -> None:
-    if args.name not in RUNTIME_NAMES:
-        raise SystemExit(
-            "Only running copies can be edited: config, system-prompt, workflow, persona, or user-memory. The default baseline is not editable."
-        )
-    ensure_initialized()
-    require_explicit_owner_confirmation(args)
-    editor_text = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
-    editor = shlex.split(editor_text)
-    if not editor:
-        raise SystemExit("EDITOR/VISUAL configuration is empty")
-    completed = subprocess.run([*editor, str(runtime_path(args.name))], check=False)
-    if completed.returncode:
-        raise SystemExit(completed.returncode)
-    print(f"Edited: {runtime_path(args.name)}")
-    print("Please run python3 scripts/configure.py verify")
+SENSITIVE_CONFIG_KEY_PARTS = (
+    "account",
+    "connector",
+    "credential",
+    "token",
+    "secret",
+    "password",
+    "api_key",
+)
+
+
+def redact_config(value: object, key: str = "") -> object:
+    if any(part in key.lower() for part in SENSITIVE_CONFIG_KEY_PARTS):
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {item_key: redact_config(item_value, item_key) for item_key, item_value in value.items()}
+    if isinstance(value, list):
+        return [redact_config(item, key) for item in value]
+    return value
+
+
+def show_runtime(args: argparse.Namespace) -> None:
+    if args.name == "runtime":
+        raise SystemExit("Use path runtime to display the runtime directory")
+    if args.name in RUNTIME_NAMES:
+        ensure_initialized()
+    target = resolve_named_path(args.name)
+    try:
+        if args.name == "config":
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            print(json.dumps(redact_config(payload), ensure_ascii=False, indent=2))
+        else:
+            print(target.read_text(encoding="utf-8"), end="")
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Unable to display {args.name}: {exc}") from exc
 
 
 def set_disclosure(args: argparse.Namespace) -> None:
@@ -298,11 +405,51 @@ def set_learning(args: argparse.Namespace) -> None:
         datetime.now(timezone.utc).isoformat() if enabled else None
     )
     atomic_json(runtime_path("config"), config)
-    print(f"Learning: {'enabled' if enabled else 'disabled'}")
+    print(
+        f"Ongoing draft-edit learning: {'enabled' if enabled else 'disabled'}"
+    )
     if enabled:
         print(
-            "Only use this after the owner has explicitly agreed to the 30-day, customer-service-only, redacted learning scope."
+            "This enables automatic detection and redacted learning from later owner-edited AI drafts. It does not control one-time onboarding history import or use of existing user memory."
         )
+
+
+def set_memory_usage(args: argparse.Namespace) -> None:
+    require_explicit_owner_confirmation(args)
+    config = read_config()
+    memory = config.setdefault("memory", {})
+    enabled = args.value == "on"
+    memory["usage_enabled"] = enabled
+    memory["usage_confirmed_at"] = (
+        datetime.now(timezone.utc).isoformat() if enabled else None
+    )
+    atomic_json(runtime_path("config"), config)
+    if enabled:
+        print("Existing user memory: enabled for draft generation")
+        print(
+            "Only matching approved playbooks may guide drafts; current order evidence, policy, law, and safety gates still take precedence."
+        )
+    else:
+        print("Existing user memory: disabled for draft generation")
+
+
+def set_auto_send(args: argparse.Namespace) -> None:
+    require_explicit_owner_confirmation(args)
+    config = read_config()
+    automation = config.setdefault("automation", {})
+    enabled = args.value == "on"
+    automation["send_mode"] = "auto_send" if enabled else "draft_only"
+    automation["auto_send_confirmed_at"] = (
+        datetime.now(timezone.utc).isoformat() if enabled else None
+    )
+    atomic_json(runtime_path("config"), config)
+    if enabled:
+        print("Automatic sending: enabled")
+        print(
+            "No category is approved by this global setting. A message may be sent only when every atomic issue has an enabled independent automatic-reply permission confirmed after a sent-Draft event. Otherwise create a draft."
+        )
+    else:
+        print("Automatic sending: disabled; all messages remain drafts")
 
 
 def configure_schedule(args: argparse.Namespace) -> None:
@@ -331,8 +478,10 @@ def configure_schedule(args: argparse.Namespace) -> None:
 
 
 def set_storefront_status(args: argparse.Namespace) -> None:
+    require_explicit_owner_confirmation(args)
     config = read_config()
     storefront = config.setdefault("storefront", {})
+    confirmed_at = datetime.now(timezone.utc).isoformat()
     if args.value == "confirmed":
         url = storefront.get("url")
         discovery_path = Path(
@@ -342,7 +491,12 @@ def set_storefront_status(args: argparse.Namespace) -> None:
             raise SystemExit(
                 "Run scripts/discover_store.py with the merchant-supplied URL before confirming the storefront"
             )
-        storefront["status"] = "confirmed"
+        storefront.update(
+            {
+                "status": "confirmed",
+                "owner_confirmed_at": confirmed_at,
+            }
+        )
         message = f"Confirmed public storefront: {url}"
     else:
         storefront.update(
@@ -351,6 +505,7 @@ def set_storefront_status(args: argparse.Namespace) -> None:
                 "url": "",
                 "discovery_file": "",
                 "last_discovered_at": None,
+                "owner_confirmed_at": confirmed_at,
             }
         )
         message = "Recorded: this merchant has no public storefront"
@@ -405,14 +560,33 @@ def verify_runtime(args: argparse.Namespace) -> None:
     if not persona.strip():
         errors.append("Run version user is set to empty")
     config = read_config()
-    if config.get("version") != 3:
+    if config.get("version") != 7:
         errors.append(
-            "config.version must be 3; run python3 scripts/configure.py init to add new safe defaults"
+            "config.version must be 7; run python3 scripts/configure.py init to add new safe defaults"
         )
-    send_mode = config.get("automation", {}).get("send_mode")
+    automation = config.get("automation", {})
+    if not isinstance(automation, dict):
+        errors.append("automation must be an object")
+        automation = {}
+    send_mode = automation.get("send_mode")
     if send_mode not in {"draft_only", "auto_send"}:
         errors.append("automation.send_mode must be draft_only or auto_send")
-    disclosure = config.get("automation", {}).get("ai_disclosure", {})
+    auto_send_confirmed_at = automation.get("auto_send_confirmed_at")
+    if send_mode == "auto_send" and (
+        not isinstance(auto_send_confirmed_at, str) or not auto_send_confirmed_at
+    ):
+        errors.append(
+            "automation.auto_send_confirmed_at is required when automatic sending is enabled"
+        )
+    if send_mode == "draft_only" and auto_send_confirmed_at is not None:
+        errors.append(
+            "automation.auto_send_confirmed_at must be null while draft_only is enabled"
+        )
+    if "auto_send_allowlist" in automation:
+        errors.append(
+            "automation.auto_send_allowlist is no longer supported; use independent category automatic-reply permissions instead"
+        )
+    disclosure = automation.get("ai_disclosure", {})
     if disclosure.get("text") != DISCLOSURE:
         errors.append(
             "AI statement text has been rewritten; please restore the specified original text"
@@ -422,6 +596,35 @@ def verify_runtime(args: argparse.Namespace) -> None:
     learning = config.get("learning", {})
     if not isinstance(learning.get("enabled"), bool):
         errors.append("learning.enabled must be a Boolean value")
+    memory = config.get("memory", {})
+    if not isinstance(memory, dict):
+        errors.append("memory must be an object")
+        memory = {}
+    memory_usage_enabled = memory.get("usage_enabled")
+    if not isinstance(memory_usage_enabled, bool):
+        errors.append("memory.usage_enabled must be a Boolean value")
+    memory_usage_confirmed_at = memory.get("usage_confirmed_at")
+    if memory_usage_confirmed_at is not None and (
+        not isinstance(memory_usage_confirmed_at, str)
+        or not memory_usage_confirmed_at
+    ):
+        errors.append(
+            "memory.usage_confirmed_at must be null or a non-empty timestamp"
+        )
+    if memory_usage_enabled is False and memory_usage_confirmed_at is not None:
+        errors.append(
+            "memory.usage_confirmed_at must be null while existing memory use is disabled"
+        )
+    retention = config.get("retention", {})
+    if not isinstance(retention, dict):
+        errors.append("retention must be an object")
+    elif (
+        type(retention.get("pending_category_confirmation_days")) is not int
+        or retention.get("pending_category_confirmation_days") < 0
+    ):
+        errors.append(
+            "retention.pending_category_confirmation_days must be a non-negative integer"
+        )
     timezone_name = config.get("timezone", "")
     if not isinstance(timezone_name, str):
         errors.append("timezone must be a string")
@@ -451,6 +654,9 @@ def verify_runtime(args: argparse.Namespace) -> None:
         ) or not scheduling.get("quiet_hours_confirmed_at"):
             errors.append("A scheduled task requires quiet_hours_confirmed_at")
     storefront = config.get("storefront", {})
+    if not isinstance(storefront, dict):
+        errors.append("storefront must be an object")
+        storefront = {}
     if storefront.get("status") not in {
         "unconfigured",
         "discovered",
@@ -473,6 +679,19 @@ def verify_runtime(args: argparse.Namespace) -> None:
         )
     if storefront.get("status") == "none" and storefront_url:
         errors.append("storefront.url must be empty when storefront.status is none")
+    storefront_confirmed_at = storefront.get("owner_confirmed_at")
+    if storefront.get("status") in {"confirmed", "none"} and (
+        not isinstance(storefront_confirmed_at, str) or not storefront_confirmed_at
+    ):
+        errors.append(
+            "storefront.owner_confirmed_at is required when storefront status is confirmed or none"
+        )
+    if storefront.get("status") in {"unconfigured", "discovered"} and (
+        storefront_confirmed_at is not None
+    ):
+        errors.append(
+            "storefront.owner_confirmed_at must be null until the owner confirms the storefront state"
+        )
     if storefront_url:
         discovery_path = Path(
             storefront.get("discovery_file") or resolve_named_path("store-discovery")
@@ -497,6 +716,33 @@ def verify_runtime(args: argparse.Namespace) -> None:
     memory = runtime_path("user-memory").read_text(encoding="utf-8")
     if "ECS_MEMORY_JSON_BEGIN" not in memory or "ECS_MEMORY_JSON_END" not in memory:
         errors.append("user_memory.md is missing its managed-memory markers")
+    for legacy_field in (
+        "auto_send_approved",
+        "auto_send_approved_at",
+        "auto_send_confirmation",
+        "sent_draft_confirmation",
+    ):
+        if legacy_field in memory:
+            errors.append(
+                f"user_memory.md must not contain legacy automatic-reply field: {legacy_field}"
+            )
+    try:
+        permissions = load_permissions()
+        pending = load_pending()
+        if permissions.get("schema_version") != 1:
+            errors.append("auto_reply_permissions.json must use schema_version 1")
+        if pending.get("schema_version") != 1:
+            errors.append(
+                "pending_category_confirmations.json must use schema_version 1"
+            )
+        for key, permission in permissions.get("categories", {}).items():
+            if not isinstance(permission, dict) or permission.get("enabled") not in {
+                True,
+                False,
+            }:
+                errors.append(f"Invalid automatic-reply permission record: {key}")
+    except SystemExit as exc:
+        errors.append(str(exc))
     manifest_path = ASSETS_DIR / "baseline-manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -539,19 +785,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     path_parser.set_defaults(func=print_path)
 
-    edit_parser = subparsers.add_parser(
-        "edit", help="Open running copy with safe argument list"
+    show_parser = subparsers.add_parser(
+        "show", help="Display a running file read-only; config values are redacted"
     )
-    edit_parser.add_argument("name", choices=list(RUNTIME_NAMES))
-    edit_parser.add_argument(
-        "--confirm-owner-request",
-        action="store_true",
-        help="Required because this changes an operator-owned runtime file",
+    show_parser.add_argument(
+        "name",
+        choices=[*RUNTIME_NAMES, "default-system-prompt", "store-discovery"],
     )
-    edit_parser.set_defaults(func=edit_runtime)
+    show_parser.set_defaults(func=show_runtime)
 
     set_parser = subparsers.add_parser("set", help="Set controlled options")
-    set_parser.add_argument("setting", choices=["disclosure", "learning"])
+    set_parser.add_argument(
+        "setting", choices=["disclosure", "learning", "memory-usage", "auto-send"]
+    )
     set_parser.add_argument("value", choices=["on", "off"])
     set_parser.add_argument(
         "--confirm-owner-request",
@@ -560,7 +806,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     set_parser.set_defaults(
         func=lambda args: (
-            set_disclosure(args) if args.setting == "disclosure" else set_learning(args)
+            set_disclosure(args)
+            if args.setting == "disclosure"
+            else set_learning(args)
+            if args.setting == "learning"
+            else set_memory_usage(args)
+            if args.setting == "memory-usage"
+            else set_auto_send(args)
         )
     )
 
@@ -580,6 +832,11 @@ def build_parser() -> argparse.ArgumentParser:
         "storefront", help="Confirm a discovered storefront or record that none exists"
     )
     storefront_parser.add_argument("value", choices=["confirmed", "none"])
+    storefront_parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required because this records an owner-confirmed storefront state",
+    )
     storefront_parser.set_defaults(func=set_storefront_status)
 
     restore_parser = subparsers.add_parser(
@@ -610,7 +867,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     if (
-        getattr(args, "setting", None) not in {None, "disclosure", "learning"}
+        getattr(args, "setting", None)
+        not in {None, "disclosure", "learning", "memory-usage", "auto-send"}
         and args.command == "set"
     ):
         raise SystemExit("Unknown setting")

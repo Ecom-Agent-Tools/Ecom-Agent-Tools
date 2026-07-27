@@ -297,7 +297,12 @@ def main() -> int:
             or Path(storefront.get("discovery_file") or runtime_dir() / "store-discovery.json")
         )
         atomic_json(output, payload)
-        update_runtime_config(payload["storefront_url"], output, payload["retrieved_at"])
+        update_runtime_config(
+            payload["storefront_url"],
+            output,
+            payload["retrieved_at"],
+            preserve_confirmation=False,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"Browser discovery import failed safely: {exc}", file=sys.stderr)
         return 1

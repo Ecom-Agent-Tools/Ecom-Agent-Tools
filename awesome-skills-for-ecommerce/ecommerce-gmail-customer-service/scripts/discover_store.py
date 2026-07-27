@@ -72,6 +72,49 @@ def runtime_config() -> dict[str, Any]:
         raise ValueError(f"Unable to read runtime config: {exc}") from exc
 
 
+def owner_confirmed_storefront_url(storefront: Any) -> str | None:
+    if not isinstance(storefront, dict):
+        return None
+    url = storefront.get("url")
+    confirmed_at = storefront.get("owner_confirmed_at")
+    if (
+        storefront.get("status") == "confirmed"
+        and isinstance(url, str)
+        and url
+        and isinstance(confirmed_at, str)
+        and confirmed_at
+    ):
+        return url
+    return None
+
+
+def resolve_discovery_url(
+    requested_url: str | None,
+    storefront: Any,
+    owner_confirmed_request: bool,
+) -> str:
+    """Allow unattended refreshes only for the exact owner-confirmed URL."""
+    configured_url = storefront.get("url") if isinstance(storefront, dict) else ""
+    confirmed_url = owner_confirmed_storefront_url(storefront)
+    if requested_url:
+        if requested_url == confirmed_url:
+            return requested_url
+        if not owner_confirmed_request:
+            raise ValueError(
+                "First-time storefront discovery or a changed storefront URL changes operator-owned runtime state. Confirm the current owner's request and rerun with --confirm-owner-request"
+            )
+        return requested_url
+    if confirmed_url:
+        return confirmed_url
+    if configured_url:
+        raise ValueError(
+            "Automatic storefront refresh requires a previously owner-confirmed storefront. Review the existing discovery result and run scripts/configure.py storefront confirmed --confirm-owner-request, or supply a new merchant URL with --confirm-owner-request"
+        )
+    raise ValueError(
+        "Store discovery requires --url and --confirm-owner-request during first-time setup"
+    )
+
+
 def normalized_host(host: str) -> str:
     value = host.rstrip(".").lower()
     return value.removeprefix("www.")
@@ -362,22 +405,25 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def update_runtime_config(
-    storefront_url: str, output: Path, discovered_at: str
+    storefront_url: str,
+    output: Path,
+    discovered_at: str,
+    preserve_confirmation: bool = True,
 ) -> None:
     config_path = runtime_dir() / "config.json"
     if not config_path.exists():
         return
     config = json.loads(config_path.read_text(encoding="utf-8"))
     storefront = config.setdefault("storefront", {})
-    status = (
-        "confirmed"
-        if storefront.get("status") == "confirmed"
-        and storefront.get("url") == storefront_url
-        else "discovered"
-    )
+    confirmed_url = owner_confirmed_storefront_url(storefront)
+    keep_confirmed = preserve_confirmation and confirmed_url == storefront_url
+    status = "confirmed" if keep_confirmed else "discovered"
     storefront.update(
         {
             "status": status,
+            "owner_confirmed_at": (
+                storefront.get("owner_confirmed_at") if keep_confirmed else None
+            ),
             "url": storefront_url,
             "discovery_file": str(output),
             "last_discovered_at": discovered_at,
@@ -565,6 +611,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-bytes", type=int)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--delay", type=float)
+    parser.add_argument(
+        "--confirm-owner-request",
+        action="store_true",
+        help="Required for first-time discovery or a changed storefront URL",
+    )
     return parser
 
 
@@ -576,9 +627,12 @@ def main() -> int:
         print(f"Store discovery failed safely: {exc}", file=sys.stderr)
         return 1
     storefront = config.get("storefront", {})
-    args.url = args.url or storefront.get("url")
-    if not args.url:
-        print("Store discovery requires --url during first-time setup", file=sys.stderr)
+    try:
+        args.url = resolve_discovery_url(
+            args.url, storefront, args.confirm_owner_request
+        )
+    except ValueError as exc:
+        print(f"Store discovery failed safely: {exc}", file=sys.stderr)
         return 2
     if storefront.get("discovery_enabled") is False:
         print("Store discovery is disabled in config.json", file=sys.stderr)

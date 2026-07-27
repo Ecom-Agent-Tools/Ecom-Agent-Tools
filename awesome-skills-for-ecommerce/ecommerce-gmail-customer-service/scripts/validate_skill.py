@@ -72,12 +72,22 @@ def main() -> int:
     for relative in [
         "scripts/discover_store.py",
         "scripts/import_browser_discovery.py",
+        "scripts/auto_reply_permissions.py",
+        "scripts/build_release_artifact.py",
+        "scripts/retention.py",
         "references/storefront-discovery.md",
     ]:
         if not (ROOT / relative).is_file():
             error(errors, f"Missing storefront discovery component: {relative}")
     if "TODO" in skill_text:
         error(errors, "SKILL.md still contains TODO")
+
+    persona = (ROOT / "assets" / "default-persona.md").read_text(encoding="utf-8")
+    if "Service temperament:" not in persona:
+        error(errors, "The default persona must define its service temperament")
+    for marker in ["Gender:", "Age:", "Status:", "External settings:", "Interests:"]:
+        if marker in persona:
+            error(errors, f"The default persona must not contain irrelevant trait: {marker}")
 
     prompt_path = ROOT / "assets" / "default-system-prompt.md"
     prompt = prompt_path.read_text(encoding="utf-8")
@@ -97,6 +107,14 @@ def main() -> int:
             errors,
             "The default system prompt word lacks the original text of the specified AI statement",
         )
+    for marker in [
+        "every atomic request",
+        "auto_reply_permissions.json",
+        "owner_confirmed_at",
+        "known AI Draft",
+    ]:
+        if marker not in prompt:
+            error(errors, f"The default system prompt lacks category auto-send gate: {marker}")
     # Git and ClawHub bundles do not preserve a portable read-only file mode.
     # configure.py applies that protection at runtime after installation.
 
@@ -178,11 +196,16 @@ def main() -> int:
     if "import_browser_discovery.py --confirm-owner-request" not in workflow:
         error(errors, "Default workflow is missing the guarded browser fallback")
     for marker in [
-        "draft_learning.py snapshot --confirm-owner-request",
-        "user_memory.py merge --confirm-owner-request",
+        "draft_learning.py snapshot",
+        "user_memory.py merge --source draft-edit",
+        "auto_reply_permissions.py record-sent",
+        "auto_reply_permissions.py check",
+        "every atomic issue",
+        "memory.usage_enabled",
+        "retention.py purge",
     ]:
         if marker not in workflow:
-            error(errors, f"Default workflow is missing an owner-confirmed learning write: {marker}")
+            error(errors, f"Default workflow is missing a required safety step: {marker}")
 
     onboarding = (ROOT / "references" / "onboarding.md").read_text(encoding="utf-8")
     for marker in [
@@ -191,10 +214,21 @@ def main() -> int:
         "openclaw cron add",
         "--disabled",
         "Agent name",
-        "edit persona",
-        "edit system-prompt",
-        "edit workflow",
+        "show persona",
+        "show system-prompt",
+        "show workflow",
         "set disclosure",
+        "set memory-usage",
+        "set auto-send",
+        "--source onboarding",
+        "auto_reply_permissions.py record-sent",
+        "auto_reply_permissions.py confirm",
+        "--sent-message-id",
+        "Recommend keeping it off",
+        "clear --confirm-owner-request --confirm-delete-all",
+        "discover_store.py --url https://store.example --confirm-owner-request",
+        "storefront confirmed --confirm-owner-request",
+        "storefront none --confirm-owner-request",
         "simulation testing",
         "requires manual processing",
         "completion",
@@ -226,10 +260,31 @@ def main() -> int:
             "Browser discovery output must remain inside the private runtime directory",
         ],
         "scripts/draft_learning.py": [
-            "requires explicitly enabled learning with recorded consent"
+            "Ongoing draft-edit learning is disabled"
         ],
         "scripts/user_memory.py": [
-            "requires explicitly enabled learning with recorded consent"
+            "requires explicitly enabled ongoing draft-edit learning",
+            "--confirm-delete-all",
+        ],
+        "scripts/auto_reply_permissions.py": [
+            "record-sent",
+            "auto_reply_permission_missing",
+            "--confirm-owner-request",
+            "disable-all",
+            "purge-events",
+        ],
+        "scripts/configure.py": [
+            "auto_send_confirmed_at",
+            "def set_auto_send",
+            "def set_memory_usage",
+            "storefront.owner_confirmed_at",
+            "def show_runtime",
+        ],
+        "scripts/retention.py": ["case_report_days"],
+        "scripts/discover_store.py": [
+            "owner_confirmed_storefront_url",
+            "--confirm-owner-request",
+            "Automatic storefront refresh requires a previously owner-confirmed storefront",
         ],
     }
     for relative, markers in script_guards.items():
@@ -241,8 +296,8 @@ def main() -> int:
     config = json.loads(
         (ROOT / "assets" / "default-config.json").read_text(encoding="utf-8")
     )
-    if config.get("version") != 3:
-        error(errors, "The default configuration version must be 3")
+    if config.get("version") != 7:
+        error(errors, "The default configuration version must be 7")
     if config.get("timezone") != "":
         error(errors, "The default timezone must be empty until the owner confirms it")
     scheduling = config.get("scheduling", {})
@@ -252,13 +307,31 @@ def main() -> int:
         error(errors, "Default quiet_hours must be empty")
     if scheduling.get("quiet_hours_confirmed_at") is not None:
         error(errors, "Default quiet_hours_confirmed_at must be null")
-    if config.get("automation", {}).get("send_mode") != "draft_only":
+    automation = config.get("automation", {})
+    if automation.get("send_mode") != "draft_only":
         error(errors, "The default sending mode must be draft_only")
-    if config.get("automation", {}).get("ai_disclosure", {}).get("text") != DISCLOSURE:
+    if automation.get("auto_send_confirmed_at") is not None:
+        error(errors, "Default auto_send_confirmed_at must be null")
+    if "auto_send_allowlist" in automation:
+        error(errors, "The legacy auto_send_allowlist must not be shipped")
+    if automation.get("ai_disclosure", {}).get("text") != DISCLOSURE:
         error(errors, "The default configuration AI declaration text is incorrect")
+    retention = config.get("retention", {})
+    if retention.get("pending_category_confirmation_days") != 14:
+        error(
+            errors,
+            "Default pending_category_confirmation_days must be 14",
+        )
+    memory = config.get("memory", {})
+    if memory.get("usage_enabled") is not True:
+        error(errors, "Existing memory use must be enabled by default")
+    if memory.get("usage_confirmed_at") is not None:
+        error(errors, "Default memory usage confirmation must be null")
     storefront = config.get("storefront", {})
     if storefront.get("status") != "unconfigured":
         error(errors, "The default storefront status must be unconfigured")
+    if storefront.get("owner_confirmed_at") is not None:
+        error(errors, "Default storefront owner_confirmed_at must be null")
     if storefront.get("discovery_enabled") is not True:
         error(errors, "Public storefront discovery must be enabled by default")
     if storefront.get("respect_robots_txt") is not True:
@@ -267,6 +340,22 @@ def main() -> int:
         error(errors, "Public storefront discovery must be limited to public sources")
     if storefront.get("refresh_interval_hours") != 24:
         error(errors, "The default storefront refresh interval must be 24 hours")
+
+    auto_send_script = (ROOT / "scripts" / "auto_reply_permissions.py").read_text(
+        encoding="utf-8"
+    )
+    if "memory_usage_disabled" in auto_send_script:
+        error(
+            errors,
+            "Automatic-send eligibility must not be coupled to memory.usage_enabled",
+        )
+
+    configure_script = (ROOT / "scripts" / "configure.py").read_text(
+        encoding="utf-8"
+    )
+    for marker in ("subprocess", "shlex", "VISUAL", "EDITOR", "edit_runtime"):
+        if marker in configure_script:
+            error(errors, f"configure.py must not retain external-editor capability: {marker}")
 
     sources = (ROOT / "references" / "research-sources.md").read_text(encoding="utf-8")
     source_urls = re.findall(r"https://[^)\s]+", sources)
@@ -282,8 +371,11 @@ def main() -> int:
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for marker in [
-        "@ecom-agent-tools/ecommerce-gmail-customer-service",
+        "@ecomagenttools/ecommerce-gmail-customer-service",
         "https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools",
+        "server-resolved-github-import",
+        "gh attestation verify",
+        "signature.status=unsigned",
     ]:
         if marker not in readme:
             error(errors, f"README.md is missing release provenance: {marker}")

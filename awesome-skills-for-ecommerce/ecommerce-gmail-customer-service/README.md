@@ -27,10 +27,10 @@ It turns incoming customer threads into auditable reply drafts: it separates mul
 
 ### Registry installation
 
-After v1.2.2 is published, install the versioned registry release into the current Agent workspace:
+After v1.2.4 is published, install the versioned registry release into the current Agent workspace:
 
 ```bash
-openclaw skills install @ecom-agent-tools/ecommerce-gmail-customer-service --version 1.2.2
+openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.4
 openclaw skills info ecommerce-gmail-customer-service
 ```
 
@@ -49,11 +49,31 @@ openclaw skills info ecommerce-gmail-customer-service
 
 If OpenClaw is not configured yet, run `openclaw onboard` first. Do not place OAuth client files, tokens, or other secrets in this repository.
 
-## Source and release evidence
+## Source, publisher, and release evidence
 
-- Source repository: <https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/ecommerce-gmail-customer-service-v1.2.2/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service>
-- Before granting Gmail access, inspect the exact release file list with `clawhub inspect ecommerce-gmail-customer-service --version 1.2.2 --files`.
-- The public v1.2.2 release must attach its GitHub repository, commit, ref, and Skill path in ClawHub metadata. Do not treat an unsigned or unprovenanced bundle as equivalent to this source checkout.
+- Canonical public source: <https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/ecommerce-gmail-customer-service-v1.2.4/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service>. The release tag and immutable commit are both part of the verification record; the tag alone is not the security boundary.
+- The release owner is the `@ecomagenttools` organization publisher (display name: `EcomAgentTools`), not an individual persona. It must publish with `--source-repo Ecom-Agent-Tools/Ecom-Agent-Tools`, the exact `--source-commit`, `--source-ref ecommerce-gmail-customer-service-v1.2.4`, and `--source-path awesome-skills-for-ecommerce/ecommerce-gmail-customer-service`. Inspect it before granting Gmail access:
+
+  ```bash
+  clawhub skill verify @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.4
+  clawhub inspect @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.4 --files
+  ```
+
+  The verification result must report `provenance.source=server-resolved-github-import`, the public GitHub repository, exact commit, release tag, and this Skill path. A README link alone is not provenance.
+
+- The GitHub Release attaches a deterministic ZIP with `release-manifest.json` listing the SHA-256 of every included file. The tag workflow signs the ZIP with a short-lived GitHub Actions OIDC/Sigstore certificate. Download the release asset and verify both the signer workflow and tag:
+
+  ```bash
+  gh release download ecommerce-gmail-customer-service-v1.2.4 \
+    --repo Ecom-Agent-Tools/Ecom-Agent-Tools \
+    --pattern 'ecommerce-gmail-customer-service-1.2.4.zip'
+  gh attestation verify ecommerce-gmail-customer-service-1.2.4.zip \
+    --repo Ecom-Agent-Tools/Ecom-Agent-Tools \
+    --signer-workflow Ecom-Agent-Tools/Ecom-Agent-Tools/.github/workflows/ecommerce-gmail-customer-service-release.yml \
+    --source-ref refs/tags/ecommerce-gmail-customer-service-v1.2.4
+  ```
+
+- ClawHub currently reports `signature.status=unsigned` for Skill versions. Do not represent that field as a cryptographic signature. The GitHub-attested release ZIP is the cryptographic publication proof; ClawHub provenance binds the registry files to the reviewed public source.
 
 ## First-time setup
 
@@ -67,15 +87,15 @@ The setup guides you through:
 4. Connecting authenticated read-only order and private merchant data sources.
 5. Naming the customer-service Agent and setting its persona.
 6. Reviewing the system prompt, workflow, and optional AI disclosure.
-7. Optionally approving 30-day historical-email learning.
+7. Optionally approving a one-time 30-day onboarding history import, then separately choosing ongoing Draft-edit learning, existing-memory use for Drafts, and the global/category automatic-send controls.
 8. Creating a disabled scheduled task and running end-to-end draft-only tests.
 
 From the Skill directory, initialize and inspect the runtime files:
 
 ```bash
 python3 scripts/configure.py init
-python3 scripts/discover_store.py --url https://store.example
-python3 scripts/configure.py storefront confirmed
+python3 scripts/discover_store.py --url https://store.example --confirm-owner-request
+python3 scripts/configure.py storefront confirmed --confirm-owner-request
 python3 scripts/configure.py status
 python3 scripts/configure.py verify
 ```
@@ -87,14 +107,24 @@ Label customer email threads with `ECS/ToProcess`, then ask the Agent to process
 Useful commands:
 
 ```bash
-python3 scripts/configure.py edit system-prompt --confirm-owner-request
-python3 scripts/configure.py edit workflow --confirm-owner-request
-python3 scripts/configure.py edit persona --confirm-owner-request
+python3 scripts/configure.py show system-prompt
+python3 scripts/configure.py show workflow
+python3 scripts/configure.py show persona
+python3 scripts/configure.py show config
+python3 scripts/configure.py path persona
 python3 scripts/configure.py path user-memory
+python3 scripts/configure.py show auto-reply-permissions
 python3 scripts/configure.py set disclosure on --confirm-owner-request
 python3 scripts/configure.py set learning on --confirm-owner-request
+python3 scripts/configure.py set memory-usage on --confirm-owner-request
+python3 scripts/configure.py set auto-send on --confirm-owner-request
+python3 scripts/user_memory.py clear --confirm-owner-request --confirm-delete-all
+python3 scripts/auto_reply_permissions.py status
+python3 scripts/auto_reply_permissions.py disable-all --confirm-owner-request
 python3 scripts/configure.py schedule --timezone '<USER_CONFIRMED_IANA_TIMEZONE>' --quiet-hours '<USER_CONFIRMED_QUIET_HOURS_OR_NONE>' --confirm-owner-request
 ```
+
+`show` is read-only and redacts configuration secrets. `path` prints the local file location; an owner may open that location with their own desktop tools, but this Skill never launches an editor, `open`, or another external program.
 
 The optional AI disclosure is:
 
@@ -104,9 +134,9 @@ Customers can request escalation by including `requires manual processing` anywh
 
 ## Safety model
 
-This Skill starts in `draft_only` mode. It does not guess order facts, inventory, shipping status, refunds, or policy eligibility. It also never treats historical writing preferences as a replacement for current order data, policies, platform rules, or applicable law.
+This Skill starts in `draft_only` mode. Existing approved long-term memory participates in Draft generation by default once it exists, but it never replaces current order data, policies, platform rules, or applicable law. The owner can turn memory use off without disabling normal Draft generation.
 
-Runtime prompt, workflow, persona, configuration, learning, restore, schedule, browser-import, and memory-write changes are administrator actions. They require a current owner request and the `--confirm-owner-request` flag; learning snapshots and memory merges also require `learning.enabled=true` with a recorded consent time. Normal email processing must not make those changes. Before any cron task, record the owner-confirmed IANA timezone and quiet-hours policy, then run `python3 scripts/configure.py verify --require-schedule`.
+Runtime prompt, workflow, persona, configuration, restore, schedule, browser-import, storefront confirmation, and whole-memory clearing changes are administrator actions. A one-time history import is allowed only during onboarding after explicit user consent and uses the owner-confirmed `--source onboarding` merge path. Ongoing Draft-edit snapshots and `--source draft-edit` merges require `learning.enabled=true` with recorded consent; that setting does not control history import or whether existing memory guides a Draft. `memory.usage_enabled` controls Draft-generation context only. Automatic sending is separate: the owner may change the global setting at any time, and every exact category is stored in independent permission state. A known sent AI Draft creates a pending confirmation event; only the owner's later confirmation enables that category. Clearing `user_memory.md` does not change category switches, and disabling one or all category switches does not change long-term memory. A first or changed storefront URL requires a current owner request and `--confirm-owner-request`; after review, `storefront confirmed` or `storefront none` requires the flag too. Only the exact URL with `storefront.status=confirmed` and a recorded `owner_confirmed_at` can refresh without a new request. Normal email processing must not make administrator changes. Before any cron task, record the owner-confirmed IANA timezone and quiet-hours policy, then run `python3 scripts/configure.py verify --require-schedule`.
 
 Storefront discovery reads only public pages, respects `robots.txt`, rejects private-network and cross-host access, and uses strict page and response limits. If direct discovery cannot fetch or render the confirmed site, the documented browser/browse fallback remains read-only and its structured output must pass `scripts/import_browser_discovery.py --confirm-owner-request` before use. Public storefront content is candidate evidence only; complete orders and customer-specific decisions still require an authorized commerce connector.
 
@@ -122,5 +152,6 @@ Review the generated drafts before sending, especially during initial deployment
 - [assets/default-system-prompt.md](assets/default-system-prompt.md) — immutable baseline safety prompt.
 - [scripts/configure.py](scripts/configure.py) — runtime configuration and confirmed scheduling safeguards.
 - [scripts/discover_store.py](scripts/discover_store.py) and [scripts/import_browser_discovery.py](scripts/import_browser_discovery.py) — guarded public-storefront discovery and validation.
-- [scripts/draft_learning.py](scripts/draft_learning.py) and [scripts/user_memory.py](scripts/user_memory.py) — optional redacted learning helpers.
+- [scripts/draft_learning.py](scripts/draft_learning.py) and [scripts/user_memory.py](scripts/user_memory.py) — optional redacted long-term learning helpers.
+- [scripts/auto_reply_permissions.py](scripts/auto_reply_permissions.py) — independent category automatic-reply switches and sent-Draft confirmation events.
 - [scripts/validate_skill.py](scripts/validate_skill.py) and [tests/test_runtime.py](tests/test_runtime.py) — offline package validation and runtime smoke tests.

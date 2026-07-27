@@ -1,0 +1,85 @@
+name: Attest E-commerce Gmail Customer Service release
+
+on:
+  push:
+    tags:
+      - "ecommerce-gmail-customer-service-v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    name: Build and attest release archive
+    runs-on: ubuntu-latest
+    env:
+      SKILL_PATH: awesome-skills-for-ecommerce/ecommerce-gmail-customer-service
+      TAG_PREFIX: ecommerce-gmail-customer-service-v
+      SOURCE_REPOSITORY: Ecom-Agent-Tools/Ecom-Agent-Tools
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            "${TAG_PREFIX}"*) ;;
+            *) echo "Unexpected release tag: ${GITHUB_REF_NAME}" >&2; exit 1 ;;
+          esac
+          release_version="${GITHUB_REF_NAME#${TAG_PREFIX}}"
+          if [[ ! "${release_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag does not contain valid semver: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          declared_version="$(sed -n 's/^version:[[:space:]]*//p' "${SKILL_PATH}/SKILL.md" | head -n 1)"
+          if [[ "${declared_version}" != "${release_version}" ]]; then
+            echo "Tag version ${release_version} does not match SKILL.md version ${declared_version}." >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${release_version}" >> "${GITHUB_ENV}"
+          echo "SOURCE_COMMIT=$(git rev-list -n 1 "${GITHUB_REF}")" >> "${GITHUB_ENV}"
+
+      - name: Validate Skill source
+        working-directory: ${{ env.SKILL_PATH }}
+        run: |
+          python3 scripts/validate_skill.py
+          python3 -m unittest tests/test_runtime.py
+          chmod u+w assets/default-system-prompt.md
+          git diff --check
+
+      - name: Build deterministic release archive
+        working-directory: ${{ env.SKILL_PATH }}
+        run: |
+          python3 scripts/build_release_artifact.py \
+            --version "${RELEASE_VERSION}" \
+            --output-dir "${GITHUB_WORKSPACE}/dist" \
+            --source-repo "${SOURCE_REPOSITORY}" \
+            --source-commit "${SOURCE_COMMIT}" \
+            --source-ref "${GITHUB_REF_NAME}" \
+            --source-path "${SKILL_PATH}"
+
+      - name: Create Sigstore build provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: dist/ecommerce-gmail-customer-service-${{ env.RELEASE_VERSION }}.zip
+
+      - name: Publish immutable GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "GitHub Release ${GITHUB_REF_NAME} already exists; release assets are not replaced." >&2
+            exit 1
+          fi
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/ecommerce-gmail-customer-service-${RELEASE_VERSION}.zip" \
+            "dist/ecommerce-gmail-customer-service-${RELEASE_VERSION}.zip.sha256" \
+            --verify-tag \
+            --title "E-commerce Gmail Customer Service ${RELEASE_VERSION}" \
+            --generate-notes

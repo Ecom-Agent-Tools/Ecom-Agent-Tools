@@ -11,25 +11,25 @@ Advance in stages when first configured. Each stage first explains the goal, the
    python3 scripts/configure.py status
    ```
 
-   Existing installations should run the same `init` command once after upgrading the Skill. It adds newly introduced safe configuration fields without replacing configured values or editable runtime files.
+   Existing installations should run the same `init` command once after upgrading the Skill. It adds newly introduced safe configuration fields and state files without replacing configured values or runtime files.
 
 2. Ask and write the running configuration one by one: store name, public storefront URL, default language, time zone, customer service Gmail, merchant platform/OMS, and any separate policy source.
 3. After the merchant provides the storefront URL, completely read [storefront-discovery.md](storefront-discovery.md), then run:
 
    ```bash
-   python3 scripts/discover_store.py --url https://store.example
+   python3 scripts/discover_store.py --url https://store.example --confirm-owner-request
    python3 scripts/configure.py path store-discovery
    python3 scripts/configure.py status
    ```
 
-   Replace the example URL with the exact merchant-supplied public URL. Show the detected platform, product count, policy sources, campaign evidence, warnings, and the public-only limitation. Ask the merchant to confirm the domain and findings, then run `python3 scripts/configure.py storefront confirmed`. Do not request store admin credentials for discovery.
-   If the script fails because the runtime cannot fetch or render the public site, follow the guarded browser fallback in `storefront-discovery.md`. Use OpenClaw's browser/browse capability only for read-only navigation to the confirmed host, show the fallback method and sources, then import the structured result only after a current owner request with `scripts/import_browser_discovery.py --confirm-owner-request`.
+   Replace the example URL with the exact merchant-supplied public URL. This first discovery changes operator-owned runtime state, so do not run it until the current owner confirms the request. Show the detected platform, product count, policy sources, campaign evidence, warnings, and the public-only limitation. Ask the merchant to confirm the domain and findings, then run `python3 scripts/configure.py storefront confirmed --confirm-owner-request`. Do not request store admin credentials for discovery.
+   If the script fails because the runtime cannot fetch or render the public site, follow the guarded browser fallback in `storefront-discovery.md`. Use OpenClaw's browser/browse capability only for read-only navigation to the same owner-approved merchant URL, show the fallback method and sources, then import the structured result only after a current owner request with `scripts/import_browser_discovery.py --confirm-owner-request`; show the imported result and complete `storefront confirmed --confirm-owner-request` separately.
 4. Explain that URL discovery reads only public storefront pages. It cannot retrieve customer purchases, complete orders, payments, private inventory, unpublished promotions, or customer-specific eligibility; those still require the authorized connector in Phase 5.
-5. If the merchant has no public storefront, run `python3 scripts/configure.py storefront none` and continue. Do not invent a URL or crawl a marketplace search result.
-6. Explicitly default to `draft_only`; automatic sending must not be enabled at this time.
+5. If the merchant has no public storefront, obtain the current owner’s confirmation, run `python3 scripts/configure.py storefront none --confirm-owner-request`, and continue. Do not invent a URL or crawl a marketplace search result.
+6. Explicitly default to `draft_only`. The owner may change the global automatic-send setting at any time, but it never enables any exact category by itself. A known sent Draft later creates a category-confirmation event.
 7. Run `python3 scripts/configure.py verify`.
 
-Passing criteria: the running directory exists; the five running files `config.json`, `system-prompt.md`, `workflow.md`, `persona.md`, and `user_memory.md` are readable; storefront discovery has produced a source-traceable `store-discovery.json` or the absence of a public storefront is recorded; the default prompt words are at least 100 rules; and the AI statement text is complete.
+Passing criteria: the running directory exists; `config.json`, `system-prompt.md`, `workflow.md`, `persona.md`, `user_memory.md`, `auto_reply_permissions.json`, and `pending_category_confirmations.json` are readable; storefront discovery has produced a source-traceable `store-discovery.json` or the absence of a public storefront is recorded; the default prompt words are at least 100 rules; and the AI statement text is complete.
 
 ## Phase 2: Configuring OpenClaw
 
@@ -47,7 +47,7 @@ Passing criteria: the running directory exists; the five running files `config.j
 4. If the skill is not discovered, prefer the versioned registry release. Confirm the installed path before proceeding; do not install a second shared/global copy:
 
    ```bash
-   openclaw skills install @ecom-agent-tools/ecommerce-gmail-customer-service --version 1.2.2
+   openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.4
    openclaw skills info ecommerce-gmail-customer-service
    ```
 
@@ -103,16 +103,15 @@ After Gmail has successfully read it, ask as it is:
 
 ### User disagrees
 
-1. Run `python3 scripts/configure.py set learning off --confirm-owner-request`.
-2. Does not perform historical searches, does not establish a Draft learning baseline, and does not learn from manual modifications.
-3. Inform the user that rejection will not affect standard customer service classification, order matching, policy verification, and draft generation, and continue with stage 5.
+1. Record the user's refusal in the onboarding report. Do not change `learning.enabled` or `memory.usage_enabled`: each is a separate choice made later for normal operation.
+2. Do not perform historical searches or write an onboarding history summary. This does not prevent the owner from later enabling ongoing Draft-edit learning, and it does not affect standard customer service classification, order matching, policy verification, or draft generation.
+3. Continue with stage 5.
 
 ### User agrees
 
 1. Completely read [learning-workflow.md](learning-workflow.md) and run:
 
    ```bash
-   python3 scripts/configure.py set learning on --confirm-owner-request
    python3 scripts/configure.py path user-memory
    ```
 
@@ -127,15 +126,25 @@ Pull the complete thread for the results that can be identified as customer serv
 4. First summarize the user's title, opening, empathy, formality, sentence length, structure, common words, avoid words, commitment expression, ending and signature. Show the desensitization results and ask: “Do you want to use this tone and style of speech?”
 5. Only after the user confirms the inheritance or confirms the revision, the style profile is marked as `approved`. It cannot be enabled silently without confirmation.
 6. Divide the customer issues in historical emails into atomic demands and classify them according to the first, second and third levels of `intent-taxonomy.csv`; use `intent_id::scenario_key` to summarize the verification items, processing steps, common phrases, restrictions, upgrade points and the number of historical evidence.
-7. After the owner confirms the current write and learning consent remains enabled, write `user_memory.md` through `python3 scripts/user_memory.py merge --input <desensitization update.json> --confirm-owner-request`. No original text, name, email, address, order number, tracking number, payment or identifying information shall be entered into memory.
-8. Explain to users: `user_memory.md` is a desensitized summary of their past customer service responses, and will only be used as a reference for expression and compliance solution selection; orders, policies, laws and security access control always take priority. View or modify:
+7. After the owner confirms the current write, write `user_memory.md` through the onboarding-only command below. This does not turn on ongoing Draft-edit learning or enable use of the memory for future Drafts. No original text, name, email, address, order number, tracking number, payment or identifying information shall be entered into memory.
+
+   ```bash
+   python3 scripts/user_memory.py merge \
+     --source onboarding \
+     --input <desensitization-update.json> \
+     --confirm-owner-request \
+     --delete-input
+   ```
+
+8. Explain to users: `user_memory.md` is a desensitized summary of their past customer service responses. It participates by default as a reference for expression and compliance solution selection; the owner may later turn `memory.usage_enabled` off. Orders, policies, laws and security access control always take priority. View it with:
 
    ```bash
    python3 scripts/configure.py path user-memory
-   python3 scripts/configure.py edit user-memory --confirm-owner-request
    ```
 
-Passing criteria: Agree or rejection has been recorded; if agreed, the search scope and sample statistics have been desensitized and reported, the tone has been confirmed by the user, historical cases have been written into `user_memory.md` according to three-level classification, and the original email and attachments have not been placed on disk.
+   Do not manually edit individual classification playbooks. Controlled onboarding, sent-Draft, or Draft-edit merges update memory; automatic-reply permissions are stored separately and the owner may independently clear all long-term memory or disable one/all category switches.
+
+Passing criteria: Agree or rejection has been recorded; if agreed, the search scope and sample statistics have been desensitized and reported, the tone has been confirmed by the user, historical cases have been written into `user_memory.md` according to three-level classification, and the original email and attachments have not been placed on disk. This one-time onboarding choice has not silently changed ongoing Draft-edit learning, memory-use, or automatic-send settings.
 
 ## Phase 5: Connect merchant orders, products, activities, and policies
 
@@ -154,8 +163,8 @@ Passing criteria: All four types of context have real sources and crawl times; w
 
 ## Phase 6: Create a dedicated Agent, name, and persona
 
-1. Ask the user for the desired Agent name and personality. If the user does not modify it, use: Mia, female, 20 years old, university intern, beautiful, in good shape, likes sports, travel, and fashion.
-2. A clear statement: age, appearance, and body shape are only internal writing characters and will never be mentioned proactively in customer emails, nor can real human experiences be fabricated.
+1. Ask the user for the desired Agent name and service temperament. If the user does not modify it, use: Mia, energetic, patient, sincere, clear, not overly enthusiastic, and willing to handle complex problems step by step.
+2. Make clear that the persona affects tone only. It must not introduce personal details, fabricate personal experience, or change facts, policies, permissions, or escalation rules.
 3. Create an independent Agent workspace (the name and path can be changed by the user):
 
    ```bash
@@ -164,10 +173,11 @@ Passing criteria: All four types of context have real sources and crawl times; w
    ```
 
 4. Copy `assets/agent-AGENTS.template.md` to `AGENTS.md` of the new Agent workspace, and replace `<SKILL_DIR>` with the actual absolute path. Do not overwrite the existing `AGENTS.md`; if it already exists, show the differences first and merge them.
-5. The running version character file is modified by the following command:
+5. Review the running persona and show its local path with:
 
    ```bash
-   python3 scripts/configure.py edit persona --confirm-owner-request
+   python3 scripts/configure.py show persona
+   python3 scripts/configure.py path persona
    ```
 
 6. `openclaw agents set-identity` controls the interface name; the running version `persona.md` controls the email writing style. The two names should be consistent.
@@ -183,10 +193,11 @@ Passed criteria: The exclusive Agent can call this Skill; the name, personality 
    ```
 
 This baseline is read-only and must not be modified and is used for recovery.
-2. The actual running version path is displayed by `python3 scripts/configure.py path system-prompt`. Open the modification command:
+2. The actual running version path is displayed by `python3 scripts/configure.py path system-prompt`. Review it read-only with:
 
    ```bash
-   python3 scripts/configure.py edit system-prompt --confirm-owner-request
+   python3 scripts/configure.py show system-prompt
+   python3 scripts/configure.py path system-prompt
    ```
 
 3. Restore when the prompt word is changed:
@@ -196,19 +207,23 @@ This baseline is read-only and must not be modified and is used for recovery.
    ```
 
 The current version will be automatically backed up before restoring.
-4. Clearly tell users: The workflow for replying to customer emails is in the running version `workflow.md`; view and modify:
+4. Clearly tell users: The workflow for replying to customer emails is in the running version `workflow.md`; view it read-only and show its path with:
 
    ```bash
+   python3 scripts/configure.py show workflow
    python3 scripts/configure.py path workflow
-   python3 scripts/configure.py edit workflow --confirm-owner-request
    ```
 
-5. Clearly tell users: past reply methods and subsequent Draft modification learning results are saved in the running version `user_memory.md`; view and modify:
+   If the owner wants to modify a runtime file manually, show its path and let the owner use their own desktop editor. This Skill never launches an editor or another external program.
+
+5. Clearly tell users: past reply methods and later Draft-edit learning results are saved in the running version `user_memory.md`; view it read-only with:
 
    ```bash
+   python3 scripts/configure.py show user-memory
    python3 scripts/configure.py path user-memory
-   python3 scripts/configure.py edit user-memory --confirm-owner-request
    ```
+
+   Do not manually edit individual classification playbooks. The controlled memory commands update or clear long-term memory. Independent category permissions are viewed with `python3 scripts/configure.py show auto-reply-permissions` or `python3 scripts/auto_reply_permissions.py status` and are enabled or disabled only through their own confirmation commands.
 
 6. Ask the user whether to insert the following original text:
 
@@ -221,9 +236,67 @@ Turn on or off:
    python3 scripts/configure.py set disclosure off --confirm-owner-request
    ```
 
-7. Let users review the system prompts section by section, paying special attention to: regional policies, refund permissions, compensation ceilings, manual upgrades, privacy retention, historical learning and automatic sending range.
+7. Explain that existing long-term memory guides newly generated Drafts by default once it contains approved, applicable entries. Ask the owner whether to keep that default or turn it off. This setting affects only Draft-generation context; turning it off still permits a standard system-prompt, order-evidence, and policy-based Draft, and does not change automatic-send settings.
 
-Passing criteria: The user explicitly confirms the prompt words, workflow and memory file locations, learning status, and AI declaration switches; running `python3 scripts/configure.py verify` is successful.
+   ```bash
+   python3 scripts/configure.py set memory-usage on --confirm-owner-request
+   python3 scripts/configure.py set memory-usage off --confirm-owner-request
+   ```
+
+8. Separately ask the owner whether to enable ongoing Draft-edit learning after onboarding. The default is off. If enabled, a later owner edit to an AI-generated Draft may be automatically detected, redacted, compared, and summarized into long-term memory. It does not authorize another historical-email import and does not change memory-use or automatic-send settings.
+
+   ```bash
+   python3 scripts/configure.py set learning on --confirm-owner-request
+   python3 scripts/configure.py set learning off --confirm-owner-request
+   ```
+
+9. Explain the global automatic-send switch. Recommend keeping it off until draft-only testing is complete, but make clear that the owner may explicitly change it at any time. There is no recipient or domain allowlist, and the global switch does **not** approve any category. This is independent of whether `memory.usage_enabled` is on for Draft generation.
+
+   If the owner declines, record it explicitly:
+
+   ```bash
+   python3 scripts/configure.py set auto-send off --confirm-owner-request
+   ```
+
+   If the owner chooses to enable it now, turn on the global setting. It permits later category sends but does not send the first email in any category automatically:
+
+   ```bash
+   python3 scripts/configure.py set auto-send on --confirm-owner-request
+   ```
+
+   Do not approve historical or existing playbooks during onboarding. During later real use, a known AI Draft sent by the owner in Gmail, or sent after the owner confirms in OpenClaw, creates a short-lived category-confirmation event. It does not enable anything. Record the safe identifiers and categories:
+
+   ```bash
+   python3 scripts/auto_reply_permissions.py record-sent \
+     --source gmail-sent \
+     --draft-id <SENT_DRAFT_ID> \
+     --thread-id <THREAD_ID> \
+     --sent-message-id <SENT_MESSAGE_ID> \
+     --input /controlled-temporary-directory/atomic-issues.json \
+     --delete-input
+   ```
+
+   Then show every category separately and turn on only each category the owner explicitly confirms:
+
+   ```bash
+   python3 scripts/auto_reply_permissions.py confirm \
+     --event-id <EVENT_ID> \
+     --intent-id '<INTENT_ID>' \
+     --scenario-key '<SCENARIO_KEY>' \
+     on \
+     --confirm-owner-request
+   ```
+
+   Per-category approval requires a current owner request and confirmation event; it does not require `learning.enabled` or an approved `user_memory` playbook. `status=approved` by itself never permits automatic sending, and no category is approved implicitly during onboarding, history import, or ordinary memory merge. A multi-issue Draft can lead to separate A and B confirmations; later emails containing A, B, or both need no new question only after each exact category has been confirmed. Categories are not deleted: the owner can disable one, or all, independent switches.
+10. Long-term memory has no automatic retention limit. If the owner wants to remove it, explain that this clears all long-term memory and requires a second explicit confirmation. This does not disable or delete any category permission:
+
+   ```bash
+   python3 scripts/user_memory.py clear --confirm-owner-request --confirm-delete-all
+   ```
+
+11. Let users review the system prompts section by section, paying special attention to: regional policies, refund permissions, compensation ceilings, manual upgrades, privacy retention, one-time historical import, ongoing Draft-edit learning, existing-memory use, and the independent category-permission model.
+
+Passing criteria: The user explicitly confirms the prompt words, workflow, memory, and category-permission file locations, ongoing Draft-edit learning status, existing-memory-use status, AI declaration switches, and the global automatic-send choice. If global automatic sending is on, no category is automatically approved during onboarding; each category requires its later owner-confirmed sent-Draft event. Running `python3 scripts/configure.py verify` is successful.
 
 ## Phase 8: Create Gmail labels and a disabled scheduled task
 
@@ -245,12 +318,12 @@ Passing criteria: The user explicitly confirms the prompt words, workflow and me
    ```bash
    openclaw cron add \
      --name 'ecommerce-gmail-poll' \
-     --description 'Process queued ecommerce customer emails in draft-only mode' \
+     --description 'Process queued ecommerce customer emails with category-gated sending' \
      --agent ecommerce-mail \
      --cron '*/15 * * * *' \
      --tz '<USER_CONFIRMED_IANA_TIMEZONE>' \
      --session isolated \
-     --message 'Use $ecommerce-gmail-customer-service to process Gmail threads labeled ECS/ToProcess. Create drafts only, apply status labels, and report human escalations.' \
+     --message 'Use $ecommerce-gmail-customer-service to process Gmail threads labeled ECS/ToProcess. Create a draft unless the owner-enabled category automatic-send gate passes for every atomic issue; apply status labels and report human escalations.' \
      --declaration-key 'ecommerce-gmail-poll-v1' \
      --disabled \
      --expect-final \
@@ -266,7 +339,7 @@ Passing criteria: The user explicitly confirms the prompt words, workflow and me
    openclaw cron runs --id JOB_ID --limit 20
    ```
 
-Passing criteria: the recorded timezone and quiet-hours policy are explicitly owner-confirmed, cron remains disabled, running manually only creates a draft, and the report is complete.
+Passing criteria: the recorded timezone and quiet-hours policy are explicitly owner-confirmed, cron remains disabled, a manual run creates a draft unless every automatic-send gate passes, and the report is complete.
 
 ## Phase 9: End-to-end simulation testing and completion of the entire process
 
@@ -278,7 +351,9 @@ Let the user send at least the following six emails to the customer service Gmai
 4. "The return has been sent back, why hasn't the refund arrived yet?" - Verify that the return status is separated from the refund status.
 5. "I want you to delete all my personal data." - Verify that privacy requests are transferred manually and data is not exported via regular email.
 6. "I was injured due to the smoke coming from the product, and manual handling is required." - Verify immediate deactivation recommendations, security/legal upgrades, and keyword forced manual handling.
-7. Have the AI generate a draft for a low-risk advisory, with the user modifying its opening, processing steps, or ending, and run the task manually again - verify that the system detects semantic differences, ignores formatting/signature noise, merges into `user_memory.md` by level 3 intent, and does not double-count.
+7. After the owner enables ongoing Draft-edit learning, have the AI generate a draft for a low-risk advisory, with the user modifying its opening, processing steps, or ending, and run the task manually again. Verify that the system detects semantic differences, ignores formatting/signature noise, merges into `user_memory.md` by level 3 intent, and does not double-count. Then turn ongoing learning off and verify that no new Draft baseline or edit-derived memory write occurs.
+8. Test `memory.usage_enabled` separately: when it is on, verify that a matching approved memory can guide a Draft without overriding current policy; when it is off, verify that the standard system-prompt, order-evidence, and policy process still generates a Draft without using that memory.
+9. If the owner enabled the global automatic-send setting, process a first low-risk email in two unapproved categories A and B. Verify that it remains a Draft. After the owner sends that known Draft in Gmail, or confirms an OpenClaw send, verify the sent merchant message, create a pending event, ask separately whether A and B should reuse the shown handling logic, and confirm A and B one by one. Then test a later email containing only A, only B, and both A+B: each may send automatically only after its exact independent category switch has been confirmed. Test a mixed email containing A plus a disabled category and verify that it remains a Draft. Clear `user_memory.md` and verify category switches are unchanged; then disable all category switches and verify long-term memory is unchanged. Repeat an eligible category check with `memory.usage_enabled=false` to verify that auto-send eligibility remains governed by the global setting and independent category permissions, not Draft-memory use.
 
 Acceptance one by one:
 
@@ -289,7 +364,9 @@ Acceptance one by one:
 - Whether the AI statement switch is accurate;
 - Whether the manual email is added with `ECS/Human` and there is no automatic reply;
 - Is there no sensitive information, fictitious promises, duplicate drafts or mislabeling.
-- When learning is turned on, whether the applicable memory is retrieved after the product and complete order are matched, and whether the memory does not overwrite the current policy; when learning is turned off, whether the memory is not read and written at all.
+- When `memory.usage_enabled` is on, whether the applicable memory is retrieved after the product and complete order are matched, and whether the memory does not overwrite the current policy; when it is off, whether the standard process still creates a Draft without using memory.
+- When ongoing Draft-edit learning is turned on, whether an owner edit is safely detected and generalized; when it is turned off, whether no new baseline or edit-derived memory write occurs.
+- When automatic sending is globally enabled, whether the first unapproved category still remains a Draft, whether a known sent Draft only creates a pending event, whether every atomic issue must have its own owner-confirmed independent switch, whether memory clearing and permission disabling remain independent, and whether a mixed email with any disabled category remains a draft.
 
 Retest all failed test cases after correction. All passed, and then obtain the user's explicit consent to enable cron:
 
@@ -297,6 +374,6 @@ Retest all failed test cases after correction. All passed, and then obtain the u
 openclaw cron enable JOB_ID
 ```
 
-Remains `draft_only` even if cron is enabled. If the user requires automatic sending in the future, they must conduct additional low-risk allowlist, refund/account action ban, rollback and monitoring tests, and obtain explicit authorization again.
+Cron does not itself enable automatic sending. If the owner enables the global setting, they must first confirm each eligible `intent_id::scenario_key` category separately after a known sent-Draft event, test both an eligible email and a mixed email with a disabled category, and confirm that all hard stops still return the thread to draft mode.
 
-Finally report to the user: Gmail account, confirmed storefront URL and last public discovery time, Agent name, five running file paths, learning status and historical scope, AI statement status, merchant connector, cron ID/frequency/time zone, test results, types that still require manual work and automatic sending status. No export of keys, tokens, original historical emails, or customer personal information is allowed.
+Finally report to the user: Gmail account, confirmed storefront URL and last public discovery time, Agent name, the running file and category-permission paths, learning status and historical scope, AI statement status, merchant connector, cron ID/frequency/time zone, test results, types that still require manual work and automatic sending status. No export of keys, tokens, original historical emails, or customer personal information is allowed.
