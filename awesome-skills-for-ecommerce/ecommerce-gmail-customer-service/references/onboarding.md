@@ -23,6 +23,7 @@ Advance in stages when first configured. Each stage first explains the goal, the
    ```
 
    Replace the example URL with the exact merchant-supplied public URL. Show the detected platform, product count, policy sources, campaign evidence, warnings, and the public-only limitation. Ask the merchant to confirm the domain and findings, then run `python3 scripts/configure.py storefront confirmed`. Do not request store admin credentials for discovery.
+   If the script fails because the runtime cannot fetch or render the public site, follow the guarded browser fallback in `storefront-discovery.md`. Use OpenClaw's browser/browse capability only for read-only navigation to the confirmed host, validate the structured result with `scripts/import_browser_discovery.py`, and show the fallback method and sources before asking for confirmation.
 4. Explain that URL discovery reads only public storefront pages. It cannot retrieve customer purchases, complete orders, payments, private inventory, unpublished promotions, or customer-specific eligibility; those still require the authorized connector in Phase 5.
 5. If the merchant has no public storefront, run `python3 scripts/configure.py storefront none` and continue. Do not invent a URL or crawl a marketplace search result.
 6. Explicitly default to `draft_only`; automatic sending must not be enabled at this time.

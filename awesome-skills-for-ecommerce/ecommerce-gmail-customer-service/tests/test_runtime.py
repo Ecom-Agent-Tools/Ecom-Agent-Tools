@@ -4,11 +4,13 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 DISCOVERY_SPEC = importlib.util.spec_from_file_location(
     "discover_store", ROOT / "scripts" / "discover_store.py"
@@ -16,6 +18,13 @@ DISCOVERY_SPEC = importlib.util.spec_from_file_location(
 discover_store = importlib.util.module_from_spec(DISCOVERY_SPEC)
 assert DISCOVERY_SPEC.loader
 DISCOVERY_SPEC.loader.exec_module(discover_store)
+
+BROWSER_IMPORT_SPEC = importlib.util.spec_from_file_location(
+    "import_browser_discovery", ROOT / "scripts" / "import_browser_discovery.py"
+)
+import_browser_discovery = importlib.util.module_from_spec(BROWSER_IMPORT_SPEC)
+assert BROWSER_IMPORT_SPEC.loader
+BROWSER_IMPORT_SPEC.loader.exec_module(import_browser_discovery)
 
 
 class RuntimeTests(unittest.TestCase):
@@ -145,6 +154,95 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(result["campaign_evidence"])
         with self.assertRaises(ValueError):
             discover_store.validate_public_url("http://127.0.0.1/private")
+
+    def test_guarded_browser_discovery_import(self):
+        snapshot = {
+            "storefront_url": "https://shop.example/",
+            "public_sources_only": True,
+            "read_only": True,
+            "fallback_reason": "direct_fetch_failed",
+            "browser_tool": "browser",
+            "robots": {
+                "status": "enforced_by_browser_tool",
+                "respected": True,
+            },
+            "platform": {
+                "name": "shopify",
+                "confidence": 0.9,
+                "evidence": ["Shopify marker on a public page"],
+            },
+            "products": [
+                {
+                    "name": "Trail Bottle",
+                    "url": "https://shop.example/products/trail-bottle",
+                    "source_url": "https://shop.example/products/trail-bottle",
+                    "price": "24.00",
+                    "currency": "USD",
+                }
+            ],
+            "campaigns": [
+                {
+                    "evidence": "Summer sale: save 20% today.",
+                    "url": "https://shop.example/collections/sale",
+                }
+            ],
+            "policies": [
+                {
+                    "kind": "refund",
+                    "title": "Refund policy",
+                    "url": "https://shop.example/policies/refund-policy",
+                    "text_excerpt": "Returns are accepted within 30 days.",
+                }
+            ],
+            "sources": [{"url": "https://shop.example/", "type": "page"}],
+            "warnings": [],
+        }
+        normalized = import_browser_discovery.normalize_snapshot(snapshot)
+        self.assertEqual(normalized["discovery_method"], "browser_fallback")
+        self.assertTrue(normalized["read_only"])
+        self.assertEqual(normalized["products"][0]["status"], "public_source_unverified_applicability")
+        self.assertTrue(normalized["robots"]["respected"])
+
+        cross_host = json.loads(json.dumps(snapshot))
+        cross_host["policies"][0]["url"] = "https://support.example.net/refunds"
+        with self.assertRaises(ValueError):
+            import_browser_discovery.normalize_snapshot(cross_host)
+        private_host = json.loads(json.dumps(snapshot))
+        private_host["storefront_url"] = "http://127.0.0.1/"
+        with self.assertRaises(ValueError):
+            import_browser_discovery.normalize_snapshot(private_host)
+
+        with tempfile.TemporaryDirectory() as state:
+            env = {**os.environ, "OPENCLAW_STATE_DIR": state}
+            subprocess.run(
+                ["python3", "scripts/configure.py", "init"],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            input_path = Path(state) / "browser-input.json"
+            input_path.write_text(json.dumps(snapshot), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    "python3",
+                    "scripts/import_browser_discovery.py",
+                    "--input",
+                    str(input_path),
+                ],
+                cwd=ROOT,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            summary = json.loads(result.stdout)
+            self.assertEqual(summary["discovery_method"], "browser_fallback")
+            output = Path(summary["output"])
+            payload = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(payload["platform"]["name"], "shopify")
+            self.assertEqual(len(payload["products"]), 1)
 
 
 if __name__ == "__main__":

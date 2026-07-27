@@ -9,7 +9,7 @@ It turns incoming customer threads into auditable reply drafts: it separates mul
 - Handles pre-sale questions, order changes, shipping, damaged or missing items, returns, refunds, warranties, subscriptions, privacy requests, complaints, and more.
 - Matches each request to the relevant product and complete order instead of guessing.
 - Uses merchant policies and current campaign information when preparing a response.
-- Lets the merchant enter one public storefront URL during setup, then safely discovers public product data, likely campaign pages, and policy sources with timestamps and provenance.
+- Lets the merchant enter one public storefront URL during setup, then safely discovers public product data, likely campaign pages, and policy sources with timestamps and provenance; when direct fetching fails, a guarded OpenClaw browser/browse fallback can produce the same validated snapshot.
 - Creates Gmail drafts by default; sending is disabled until explicitly configured and tested.
 - Escalates high-risk cases such as safety incidents, legal complaints, chargebacks, privacy requests, fraud, and requests containing `requires manual processing`.
 - Can optionally learn approved writing preferences and reusable handling patterns from the previous 30 days of a dedicated support mailbox. This requires explicit user consent and stores only redacted summaries in `user_memory.md`.
@@ -86,7 +86,7 @@ Customers can request escalation by including `requires manual processing` anywh
 
 This Skill starts in `draft_only` mode. It does not guess order facts, inventory, shipping status, refunds, or policy eligibility. It also never treats historical writing preferences as a replacement for current order data, policies, platform rules, or applicable law.
 
-Storefront discovery reads only public pages, respects `robots.txt`, rejects private-network and cross-host access, and uses strict page and response limits. Public storefront content is candidate evidence only; complete orders and customer-specific decisions still require an authorized commerce connector.
+Storefront discovery reads only public pages, respects `robots.txt`, rejects private-network and cross-host access, and uses strict page and response limits. If direct discovery cannot fetch or render the confirmed site, the documented browser/browse fallback remains read-only and its structured output must pass `scripts/import_browser_discovery.py` before use. Public storefront content is candidate evidence only; complete orders and customer-specific decisions still require an authorized commerce connector.
 
 Review the generated drafts before sending, especially during initial deployment and after changing a connector, system prompt, or workflow.
 

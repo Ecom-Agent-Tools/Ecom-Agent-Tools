@@ -57,7 +57,11 @@ def main() -> int:
         error(errors, "SKILL.md metadata must declare metadata.openclaw")
     if not (ROOT / ".clawhubignore").is_file():
         error(errors, "Missing .clawhubignore")
-    for relative in ["scripts/discover_store.py", "references/storefront-discovery.md"]:
+    for relative in [
+        "scripts/discover_store.py",
+        "scripts/import_browser_discovery.py",
+        "references/storefront-discovery.md",
+    ]:
         if not (ROOT / relative).is_file():
             error(errors, f"Missing storefront discovery component: {relative}")
     if "TODO" in skill_text:
@@ -159,6 +163,8 @@ def main() -> int:
     ]:
         if marker not in workflow:
             error(errors, f"Default workflow is missing: {marker}")
+    if "import_browser_discovery.py" not in workflow:
+        error(errors, "Default workflow is missing the guarded browser fallback")
 
     onboarding = (ROOT / "references" / "onboarding.md").read_text(encoding="utf-8")
     for marker in [
@@ -177,6 +183,17 @@ def main() -> int:
     ]:
         if marker not in onboarding:
             error(errors, f"The installation guide is missing: {marker}")
+    storefront_reference = (ROOT / "references" / "storefront-discovery.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in [
+        "Guarded browser fallback",
+        "import_browser_discovery.py",
+        "discovery_method=browser_fallback",
+        "Do not log in",
+    ]:
+        if marker not in storefront_reference:
+            error(errors, f"Browser fallback guide is missing: {marker}")
 
     config = json.loads(
         (ROOT / "assets" / "default-config.json").read_text(encoding="utf-8")
