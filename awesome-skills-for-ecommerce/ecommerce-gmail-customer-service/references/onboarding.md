@@ -47,7 +47,7 @@ Passing criteria: the running directory exists; `config.json`, `system-prompt.md
 4. If the skill is not discovered, prefer the versioned registry release. Confirm the installed path before proceeding; do not install a second shared/global copy:
 
    ```bash
-   openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.4
+   openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.5
    openclaw skills info ecommerce-gmail-customer-service
    ```
 

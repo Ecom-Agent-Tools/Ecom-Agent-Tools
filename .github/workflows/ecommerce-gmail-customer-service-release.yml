@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "ecommerce-gmail-customer-service-v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,13 +21,17 @@ jobs:
       SOURCE_REPOSITORY: Ecom-Agent-Tools/Ecom-Agent-Tools
     steps:
       - name: Check out the tagged source
-        uses: actions/checkout@11bd5960a326750d5838078e36cf38b85af677262 # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Validate release tag
         shell: bash
         run: |
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "Release workflow must run from an immutable tag." >&2
+            exit 1
+          fi
           case "${GITHUB_REF_NAME}" in
             "${TAG_PREFIX}"*) ;;
             *) echo "Unexpected release tag: ${GITHUB_REF_NAME}" >&2; exit 1 ;;
