@@ -1,7 +1,7 @@
 ---
 name: ecommerce-gmail-customer-service
 description: "Draft-first e-commerce Gmail support: triage customer threads, verify order and policy context, and create auditable drafts. Owners independently control ongoing draft-edit learning, existing long-term memory use, and category-based automatic sending."
-version: 1.2.5
+version: 1.2.6
 metadata:
   openclaw:
     requires:

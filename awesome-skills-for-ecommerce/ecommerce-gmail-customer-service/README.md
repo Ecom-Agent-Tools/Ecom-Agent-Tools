@@ -27,10 +27,10 @@ It turns incoming customer threads into auditable reply drafts: it separates mul
 
 ### Registry installation
 
-After v1.2.5 is published, install the versioned registry release into the current Agent workspace:
+After v1.2.6 is published, install the versioned registry release into the current Agent workspace:
 
 ```bash
-openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.5
+openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.6
 openclaw skills info ecommerce-gmail-customer-service
 ```
 
@@ -51,29 +51,29 @@ If OpenClaw is not configured yet, run `openclaw onboard` first. Do not place OA
 
 ## Source, publisher, and release evidence
 
-- Canonical public source: <https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/ecommerce-gmail-customer-service-v1.2.5/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service>. The release tag and immutable commit are both part of the verification record; the tag alone is not the security boundary.
-- The release owner is the `@ecomagenttools` organization publisher (display name: `EcomAgentTools`), not an individual persona. It must publish with `--source-repo Ecom-Agent-Tools/Ecom-Agent-Tools`, the exact `--source-commit`, `--source-ref ecommerce-gmail-customer-service-v1.2.5`, and `--source-path awesome-skills-for-ecommerce/ecommerce-gmail-customer-service`. Inspect it before granting Gmail access:
+- Canonical public source: <https://github.com/Ecom-Agent-Tools/Ecom-Agent-Tools/tree/ecommerce-gmail-customer-service-v1.2.6/awesome-skills-for-ecommerce/ecommerce-gmail-customer-service>. The release tag and immutable commit are both part of the verification record; the tag alone is not the security boundary.
+- The release owner is the `@ecomagenttools` organization publisher (display name: `EcomAgentTools`), not an individual persona. Inspect the registered files and the source release before granting Gmail access:
 
   ```bash
-  clawhub skill verify @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.5
-  clawhub inspect @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.5 --files
+  clawhub skill verify @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.6
+  clawhub inspect @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.6 --files
   ```
 
-  The verification result must report `provenance.source=server-resolved-github-import`, the public GitHub repository, exact commit, release tag, and this Skill path. A README link alone is not provenance.
+  **Current registry limitation:** the ordinary ClawHub CLI publish endpoint accepts `--source-*` fields but does not persist them as `server-resolved-github-import` provenance. Therefore v1.2.6 correctly reports `provenance.source=unavailable`; do not claim that it has registry-resolved GitHub provenance. The stricter source binding is only produced by ClawHub's authenticated **Import from GitHub** workflow, which re-fetches a public repository and records the resolved commit and path. Until that import has been completed for a later release, verify the public GitHub tag and signed release asset below rather than treating a README link as provenance.
 
 - The GitHub Release attaches a deterministic ZIP with `release-manifest.json` listing the SHA-256 of every included file. The tag workflow signs the ZIP with a short-lived GitHub Actions OIDC/Sigstore certificate. Download the release asset and verify both the signer workflow and tag:
 
   ```bash
-  gh release download ecommerce-gmail-customer-service-v1.2.5 \
+  gh release download ecommerce-gmail-customer-service-v1.2.6 \
     --repo Ecom-Agent-Tools/Ecom-Agent-Tools \
-    --pattern 'ecommerce-gmail-customer-service-1.2.5.zip'
-  gh attestation verify ecommerce-gmail-customer-service-1.2.5.zip \
+    --pattern 'ecommerce-gmail-customer-service-1.2.6.zip'
+  gh attestation verify ecommerce-gmail-customer-service-1.2.6.zip \
     --repo Ecom-Agent-Tools/Ecom-Agent-Tools \
     --signer-workflow Ecom-Agent-Tools/Ecom-Agent-Tools/.github/workflows/ecommerce-gmail-customer-service-release.yml \
-    --source-ref refs/tags/ecommerce-gmail-customer-service-v1.2.5
+    --source-ref refs/tags/ecommerce-gmail-customer-service-v1.2.6
   ```
 
-- ClawHub currently reports `signature.status=unsigned` for Skill versions. Do not represent that field as a cryptographic signature. The GitHub-attested release ZIP is the cryptographic publication proof; ClawHub provenance binds the registry files to the reviewed public source.
+- ClawHub currently reports `signature.status=unsigned` for Skill versions. Do not represent that field as a cryptographic signature. The GitHub-attested release ZIP is the cryptographic publication proof. Once a later release is published through ClawHub's GitHub Import workflow, its server-resolved provenance can additionally bind registry files to the reviewed public source.
 
 ## First-time setup
 
