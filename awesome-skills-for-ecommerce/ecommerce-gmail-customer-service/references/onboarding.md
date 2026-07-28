@@ -47,7 +47,7 @@ Passing criteria: the running directory exists; `config.json`, `system-prompt.md
 4. If the skill is not discovered, prefer the versioned registry release. Confirm the installed path before proceeding; do not install a second shared/global copy:
 
    ```bash
-   openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.6
+   openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.8
    openclaw skills info ecommerce-gmail-customer-service
    ```
 
@@ -75,6 +75,9 @@ Only bootstraps one page at a time and does not create or upload keys for the us
 - Inform users: External + Testing authorizations requesting Gmail user data typically expire after 7 days; long-term automation requires configuration of publishing status and verification according to Google's current policies and cannot be bypassed through scripts.
 5. Open [OAuth Clients](https://console.cloud.google.com/auth/clients), create an OAuth client of type `Desktop app`, and download JSON.
 6. Users are required to save JSON in a private path on the local machine, and set the file permissions to readable only by themselves; never put it in the warehouse, cloud disk shared directory, Agent workspace or chat.
+
+> **Need help before importing Google OAuth?** If the user encounters difficulties, they can consult the [OpenClaw Gmail customer-service workflow guide](https://ecomagenttools.com/blog/openclaw-gmail-customer-service-workflow) before continuing.
+
 7. Import and authorize:
 
    ```bash
@@ -148,18 +151,27 @@ Passing criteria: Agree or rejection has been recorded; if agreed, the search sc
 
 ## Phase 5: Connect merchant orders, products, activities, and policies
 
-1. Start with the detected public storefront platform as a hint, then ask the merchant to confirm the actual order system: Shopify, WooCommerce, Amazon/eBay/Etsy/Walmart, other marketplaces, self-built ERP/OMS, or a combination. Detection must not be treated as authorization.
-2. Press [merchant-data-contract.md](merchant-data-contract.md) to configure the read-only connector. First only allow `find_customer`, `list_recent_orders`, `get_order`, `get_product`, `list_campaigns`, `list_policies`.
-3. Connectors that "put client input into shell/SQL" are not accepted. All calls must be parameterized and return structured JSON.
-4. Combine the public discovery snapshot with authenticated sources only under the precedence and applicability rules in [storefront-discovery.md](storefront-discovery.md). Public data may fill product descriptions and identify candidate policy or campaign sources, but it cannot prove purchases, order status, inventory, historical terms, or customer eligibility.
-5. Verify with a test client:
-- Ability to pull recently purchased items;
-- Ability to trace products back to complete orders;
-- Ability to pull current activities;
-- Ability to read the source, region and version of the refund/return policy.
-6. Write operations (cancellation, refund, address change, etc.) remain closed unless the user configures permissions and approvals otherwise.
+1. Start with the detected public storefront platform as a hint, then ask the merchant to confirm every actual order system: Shopify, WooCommerce, Amazon, eBay, Etsy, Walmart, BigCommerce, Wix, other marketplaces, self-built ERP/OMS, or a combination. Detection must not be treated as authorization.
+2. State the boundary before asking for a credential: public discovery can supply only public product, campaign, and policy evidence. Order lookup, private customer/order data, fulfillment/tracking, private inventory, historical entitlement, and customer-specific eligibility require an authorized API connector. Do not log in to or scrape an admin page as an alternative.
+3. Completely read [platform-connectors.md](platform-connectors.md), then show the merchant the selected platform's official documentation links and capability row. Explain whether the platform has a first-party customer resource or only order-associated buyer data. The table describes vendor capabilities; this bundled Skill does not itself include a native connector, OAuth callback service, or secret store for any listed platform.
+4. For each selected platform, guide the current owner through one choice:
+   - **Existing approved connector:** open the linked official authorization path, authorize the connector with the minimum read capabilities, and confirm which contract operations it actually supports.
+   - **Custom connector:** an authorized technical operator follows the linked official vendor guide to create/install the app or create/retrieve the platform credential. Request only the initial read permissions needed for `find_customer`, `list_recent_orders`, `get_order`, `get_product`, `list_campaigns`, and `list_policies` that the platform truly exposes.
 
-Passing criteria: All four types of context have real sources and crawl times; when the connection fails, the Agent will turn to manual work instead of guessing.
+   The Agent may provide the official links and explain the steps, but must not create the app, click consent, receive a secret, or copy a token from a portal. The merchant/operator must put raw credentials only in the approved connector's OS keychain, secret manager, or deployment-secret store. Never paste a client secret, API key, access token, refresh token, authorization code, private key, or password into chat, Gmail, `user_memory.md`, reports, the repository, the Agent workspace, `config.json`, commands, or browser-discovery files. Record only non-secret connection metadata and a secret-manager reference in controlled connector configuration.
+5. Press [merchant-data-contract.md](merchant-data-contract.md) to configure the read-only connector. Initially allow only `find_customer`, `list_recent_orders`, `get_order`, `get_product`, `list_campaigns`, and `list_policies`. A marketplace connector may support `find_customer` and customer-scoped `list_recent_orders` only through a verified order-associated buyer match; it must not claim arbitrary email lookup or arbitrary customer-history lookup when the marketplace has no general customer API.
+6. Connectors that put client input into shell, SQL, or URLs without parameterization are not accepted. All calls must be parameterized, return structured JSON, identify source/stable ID/retrieval time, and fail closed on missing permission, mismatch, timeout, or conflict.
+7. Combine the public discovery snapshot with authenticated sources only under the precedence and applicability rules in [storefront-discovery.md](storefront-discovery.md). Public data may fill product descriptions and identify candidate policy or campaign sources, but it cannot prove purchases, order status, inventory, historical terms, or customer eligibility.
+8. Verify with a masked, non-writing test client for each platform:
+- Ability to pull recently purchased items and trace them back to a complete order;
+- Ability to return fulfillment/tracking only when the chosen source actually provides it;
+- Ability to state the customer-match method or a safe no-match/insufficient-permission result;
+- Ability to pull current activities where a source exists;
+- Ability to read the source, region and version of the refund/return policy;
+- Correct platform, store/seller identifier, environment, scopes/capabilities, connector version, and secret-manager reference are recorded without the secret value.
+9. Write operations (cancellation, refund, address change, shipment update, product update, etc.) remain closed. A later write connection needs a separately designed connector, explicit owner approval, and retesting; vendor support for writes does not enable it here.
+
+Passing criteria: All four types of context have real sources and crawl times; every selected platform has passed the controlled read-only connector test or has an explicit limitation recorded; raw credentials have never entered the Skill runtime; and when a connection fails, the Agent turns to manual work instead of guessing.
 
 ## Phase 6: Create a dedicated Agent, name, and persona
 

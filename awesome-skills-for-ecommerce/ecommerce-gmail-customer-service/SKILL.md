@@ -1,7 +1,7 @@
 ---
 name: ecommerce-gmail-customer-service
 description: "Draft-first e-commerce Gmail support: triage customer threads, verify order and policy context, and create auditable drafts. Owners independently control ongoing draft-edit learning, existing long-term memory use, and category-based automatic sending."
-version: 1.2.6
+version: 1.2.8
 metadata:
   openclaw:
     requires:
@@ -46,6 +46,7 @@ Normal email processing must never edit or restore runtime prompts/workflows/per
 - Reply projects: Search [references/reply-playbooks.md](references/reply-playbooks.md) by project ID in CSV.
 - Gmail operations: [references/gmail-operations.md](references/gmail-operations.md).
 - Merchant data interface: [references/merchant-data-contract.md](references/merchant-data-contract.md).
+- Official platform API capabilities and least-privilege credential onboarding: [references/platform-connectors.md](references/platform-connectors.md).
 - Public storefront product, campaign, and policy discovery, including the guarded browser fallback: [references/storefront-discovery.md](references/storefront-discovery.md).
 - First time learning, Draft differential learning and memory merging: [references/learning-workflow.md](references/learning-workflow.md).
 - Regulation or source verification: [references/research-sources.md](references/research-sources.md).

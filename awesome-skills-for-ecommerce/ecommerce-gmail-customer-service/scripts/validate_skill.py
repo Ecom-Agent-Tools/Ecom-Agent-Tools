@@ -76,6 +76,7 @@ def main() -> int:
         "scripts/build_release_artifact.py",
         "scripts/retention.py",
         "references/storefront-discovery.md",
+        "references/platform-connectors.md",
     ]:
         if not (ROOT / relative).is_file():
             error(errors, f"Missing storefront discovery component: {relative}")
@@ -229,6 +230,8 @@ def main() -> int:
         "discover_store.py --url https://store.example --confirm-owner-request",
         "storefront confirmed --confirm-owner-request",
         "storefront none --confirm-owner-request",
+        "platform-connectors.md",
+        "raw credentials have never entered the Skill runtime",
         "simulation testing",
         "requires manual processing",
         "completion",
@@ -242,6 +245,25 @@ def main() -> int:
             error(errors, f"The installation guide is missing: {marker}")
     if "Asia/Shanghai" in onboarding:
         error(errors, "The installation guide must not hard-code a timezone")
+    platform_connectors = (ROOT / "references" / "platform-connectors.md").read_text(
+        encoding="utf-8"
+    )
+    for marker in [
+        "Shopify",
+        "WooCommerce",
+        "Amazon",
+        "eBay",
+        "Etsy",
+        "Walmart",
+        "BigCommerce",
+        "Wix",
+        "no native Shopify",
+        "must not create an app",
+        "secret-manager reference",
+        "Marketplace customer-data limitation",
+    ]:
+        if marker not in platform_connectors:
+            error(errors, f"Platform connector guide is missing: {marker}")
     storefront_reference = (ROOT / "references" / "storefront-discovery.md").read_text(
         encoding="utf-8"
     )

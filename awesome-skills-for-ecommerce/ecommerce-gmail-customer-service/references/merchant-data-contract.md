@@ -4,12 +4,14 @@ This skill does not assume that merchants use Shopify, WooCommerce, Amazon, a st
 
 The public storefront discovery in [storefront-discovery.md](storefront-discovery.md) can automatically identify public product, campaign, and policy sources after the merchant supplies a URL. It is a supplemental, unauthenticated source. It cannot satisfy `find_customer`, `list_recent_orders`, `get_order`, private inventory, historical entitlement, or customer-specific campaign eligibility, and it never grants write authority.
 
+For Shopify, WooCommerce, Amazon, eBay, Etsy, Walmart, BigCommerce, and Wix, first read [platform-connectors.md](platform-connectors.md). It distinguishes what the vendor API can expose from what this Skill currently implements, gives official credential links, and requires a least-privilege read-only connection. A platform's write API or a public storefront marker does not constitute connector authorization.
+
 ## Required abilities
 
 The connector provides at least the following read-only operations; write operations must be authorized separately:
 
-1. `find_customer`: Locate the customer by verified email, order number or platform customer ID.
-2. `list_recent_orders`: Get the latest orders and line items by customer, supporting the maximum number of days and quantity.
+1. `find_customer`: Locate the customer by verified email, order number or platform customer ID. Marketplace connectors that do not expose a standalone customer resource may return only a verified order-associated buyer match; they must fail closed for an arbitrary email lookup.
+2. `list_recent_orders`: Get the latest orders and line items by a safely resolved customer/order context, supporting the maximum number of days and quantity where the platform permits. A marketplace connector must return insufficient permission/no match rather than pretend it can search arbitrary customer history.
 3. `get_order`: Get the complete order, payment, fulfillment, package, tracking, cancellation, return, refund, dispute and timeline.
 4. `list_campaigns`: Get promotions, gifts, price protection, membership and pre-sale activities valid currently and on the specified date.
 5. `list_policies`: Get policies and versions by region, channel, product type, order date and topic.
@@ -96,8 +98,7 @@ Optional write operations: `cancel_order`, `update_order`, `create_return`, `cre
 
 ## Platform selection suggestions
 
-- Shopify: Prioritize using official Admin API/approved MCP or customer service integration and configure minimum permissions.
-- WooCommerce: Use REST API with read-only order/item permissions; use separate credentials for write operations.
-- Amazon, eBay, Etsy, Walmart and other platforms: read platform cases and seller permissions at the same time, and cannot pretend that independent station actions can be applied directly.
+- Shopify, WooCommerce, BigCommerce and Wix: Use the official API path described in [platform-connectors.md](platform-connectors.md) and request only the read scopes the connector needs.
+- Amazon, eBay, Etsy and Walmart: Read the marketplace's buyer-data and seller-permission limitations before configuring a connector. Do not pretend that independent-store customer or order actions apply directly.
 - Self-built ERP/OMS: Provide the above six read-only interfaces and call them by fixed parameterization tools; do not allow the Agent to execute arbitrary SQL.
 - When returns, subscriptions, memberships, and payments are managed by third-party systems, connect these systems as independent sources and retain their state time.
