@@ -27,10 +27,10 @@ It turns incoming customer threads into auditable reply drafts: it separates mul
 
 ### Registry installation
 
-After v1.2.6 is published, install the versioned registry release into the current Agent workspace:
+After v1.2.8 is published, install the versioned registry release into the current Agent workspace:
 
 ```bash
-openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.6
+openclaw skills install @ecomagenttools/ecommerce-gmail-customer-service --version 1.2.8
 openclaw skills info ecommerce-gmail-customer-service
 ```
 
