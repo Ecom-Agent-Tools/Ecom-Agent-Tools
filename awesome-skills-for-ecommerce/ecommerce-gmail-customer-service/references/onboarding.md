@@ -75,6 +75,9 @@ Only bootstraps one page at a time and does not create or upload keys for the us
 - Inform users: External + Testing authorizations requesting Gmail user data typically expire after 7 days; long-term automation requires configuration of publishing status and verification according to Google's current policies and cannot be bypassed through scripts.
 5. Open [OAuth Clients](https://console.cloud.google.com/auth/clients), create an OAuth client of type `Desktop app`, and download JSON.
 6. Users are required to save JSON in a private path on the local machine, and set the file permissions to readable only by themselves; never put it in the warehouse, cloud disk shared directory, Agent workspace or chat.
+
+> **Need help before importing Google OAuth?** If the user encounters difficulties, they can consult the [OpenClaw Gmail customer-service workflow guide](https://ecomagenttools.com/blog/openclaw-gmail-customer-service-workflow) before continuing.
+
 7. Import and authorize:
 
    ```bash
